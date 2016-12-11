@@ -239,7 +239,7 @@
                                         [else (query-exec dbc update.sql column-id ...
                                                           (call-with-output-string (λ [db] (write updated-occurrence db)))
                                                           (table-rowid updated-occurrence))]))
-                                new-row)]))
+                                updated-occurrence)]))
                 
                 (define (delete-table [dbc : Connection] . [occurrences : (U Table (Listof Table)) *]) : Void
                   (define (virtual.sql) : Virtual-Statement (delete.sql dbtable rowid))
