@@ -5,7 +5,7 @@
 (define-syntax (normalize stx)
   (syntax-case stx []
     [(_ name ...)
-     (with-syntax ([(dbname ...) (for/list ([n (in-list (syntax->list #'(name ...)))]) (schema-name-normalize (syntax-e n)))])
+     (with-syntax ([(dbname ...) (for/list ([n (in-list (syntax->list #'(name ...)))]) (name->sql (syntax-e n)))])
        #'(begin (displayln dbname) ...))]))
 
 (normalize
