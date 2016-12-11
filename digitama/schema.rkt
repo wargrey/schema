@@ -106,7 +106,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-syntax (define-table stx)
-  (define (parse-field-definition tablename racket? stx)
+  (define (parse-field-definition tablename rowid racket? stx)
     (syntax-parse stx
       [(field DataType (~or (~between (~seq #:check contract:expr) 0 +inf.0)
                             (~optional (~or (~seq #:default defval) (~seq #:auto generate)) #:name "#:default or #:auto")
@@ -115,12 +115,13 @@
                             (~optional (~seq (~and #:unique unique)) #:name "#:unique")
                             (~optional (~seq (~and #:hide hide)) #:name "#:hide")) ...)
        (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
-       (values (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
+       (values (and (eq? (syntax-e #'field) rowid) table-field)
+               (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
                      table-field (if (attribute contract) #'(and contract ...) #'#true)
                      (if (attribute not-null) #'DataType #'(Option DataType))
-                     (if (attribute generate) #'(generate) #'(void))
+                     (if (attribute generate) #'generate #'(void))
                      (cond [(attribute defval) #'(defval)]
-                           ;[(atrribute generate) #'((generate))]
+                           [(attribute generate) #'(generate)]
                            [(attribute not-null) #'()]
                            [else #'(#false)]))
                (unless (and racket? (attribute hide))
@@ -132,22 +133,23 @@
     [(_ id #:as Table #:with primary-key (~optional prefab)
         ([field : DataType constraints ...] ...)
         (~optional (~seq #:contract record-contract:expr) #:defaults ([record-contract #'#true])))
-     (with-syntax* ([rowid (id->sql #'primary-key)]
+     (with-syntax* ([(rowid ___) (list (id->sql #'primary-key) (format-id #'id "..."))]
                     [(table dbtable) (syntax-parse #'id [(id db) (list #'id (id->sql #'db))] [id (list #'id (id->sql #'id))])]
                     [(racket :opt) (if (attribute prefab) (list (id->sql #'prefab) #'#:prefab) (list #'#false #'#:transparent))]
-                    [([(:field table-field field-contract FieldType on-update [defval ...]) ...]
+                    [([table-rowid (:field table-field field-contract FieldType on-update [defval ...]) ...]
                       [(column-id column table-column ColumnType column-guard column-not-null column-unique) ...]
                       [struct:table table? table-row?] [check-fields table.sql]
                       [unsafe-table make-table create-table insert-table in-table select-table update-table delete-table])
                      (let ([tablename (syntax-e #'table)]
+                           [pkname (syntax-e #'primary-key)]
                            [racket? (and (syntax-e #'racket) #true)])
-                       (define-values (sdleif snmuloc)
-                         (for/fold ([sdleif null] [snmuloc null])
+                       (define-values (sdleif snmuloc table-rowid)
+                         (for/fold ([sdleif null] [snmuloc null] [table-rowid #false])
                                    ([stx (in-syntax #'([field DataType constraints ...] ...))])
-                           (define-values (field-info column-info) (parse-field-definition tablename racket? stx))
-                           (values (cons field-info sdleif)
-                                   (if (void? column-info) snmuloc (cons column-info snmuloc)))))
-                       (list (reverse sdleif) (reverse snmuloc)
+                           (define-values (pk-info field-info column-info) (parse-field-definition tablename pkname racket? stx))
+                           (cond [(void? column-info) (values (cons field-info sdleif) snmuloc table-rowid)]
+                                 [else (values (cons field-info sdleif) (cons column-info snmuloc) (or table-rowid pk-info))])))
+                       (list (cons table-rowid (reverse sdleif)) (reverse snmuloc)
                              (for/list ([fmt (in-list (list "struct:~a" "~a?" "~a-row?"))]) (format-id #'table fmt tablename))
                              (for/list ([idx (in-range 2)]) (datum->syntax #'table (gensym tablename)))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'create 'insert 'in 'select 'update 'delete))])
@@ -190,79 +192,64 @@
                   (unsafe-table field ...))
 
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
+                  (when (false? table-rowid) (raise-unsupported-error 'create-table "no need to create a temporary view"))
                   (define (virtual.sql) : Virtual-Statement
                     (create-table.sql silent? dbtable rowid racket '(column ...) '(column-not-null ...) '(column-unique ...)))
                   (query-exec dbc (hash-ref! table.sql (if silent? 'create-if-not-exists 'create) virtual.sql)))
 
-                (define (insert-table [dbc : Connection] [occurrence : Table] #:or-replace? [replace? : Boolean #false]) : Void
-                  (define (virtual.sql) : Virtual-Statement (insert-into.sql replace? dbtable rowid racket '(column ...)))
-                  (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
-                  (define insert.sql : Statement (hash-ref! table.sql (if replace? 'replace 'insert) virtual.sql))
-                  (define column-id : SQL-Datum (column-guard 'column-id (table-column occurrence) dbsys)) ...
-                  (cond [(false? racket) (query-exec dbc insert.sql column-id ...)]
-                        [else (query-exec dbc insert.sql column-id ... (call-with-output-string (λ [db] (write occurrence db))))]))
+                (define insert-table : (-> Connection [#:or-replace? Boolean] (U Table (Listof Table)) * Void)
+                  (lambda [dbc #:or-replace? [replace? #false] . occurrences]
+                    (define (virtual.sql) : Virtual-Statement (insert-into.sql replace? dbtable racket '(column ...)))
+                    (when (false? table-rowid) (raise-unsupported-error 'create-table "cannot insert records into a temporary view"))
+                    (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
+                    (define insert.sql : Statement (hash-ref! table.sql (if replace? 'replace 'insert) virtual.sql))
+                    (for ([occurrence (in-list occurrences)])
+                      (for ([row (if (list? occurrence) (in-list occurrence) (in-value occurrence))])
+                        (define column-id : SQL-Datum (column-guard 'column-id (table-column row) dbsys)) ...
+                        (cond [(false? racket) (query-exec dbc insert.sql column-id ...)]
+                              [else (query-exec dbc insert.sql column-id ... (call-with-output-string (λ [db] (write row db))))])))))
 
-                (define (in-table [dbc : Connection] #:fetch [size : (U Positive-Integer +inf.0) +inf.0]) : (Sequenceof (U Table exn))
-                  (define (virtual.sql [where? : Boolean]) : (-> Virtual-Statement)
-                    (thunk (simple-select.sql where? dbtable rowid racket '(column ...))))
+                (define-syntax (select-table stx) (syntax-case stx [] [(_ argl ___) #'(sequence->list (in-table argl ___))]))
+                (define (in-table [dbc : Connection] #:fetch [size : (U Positive-Integer +inf.0) 1]) : (Sequenceof (U Table exn))
+                  (define (virtual.sql [which : Symbol]) : (-> Virtual-Statement)
+                    (thunk (simple-select.sql which dbtable rowid racket '(column ...))))
                   (define (read-table sexp) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
                       (read/assert sexp table?)))
                   (define (read-by-pk [pk : SQL-Datum]) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
                       (define record : (Listof SQL-Datum)
-                        (for/list ([row (in-vector (query-row dbc (hash-ref table.sql 'select-row (virtual.sql #true)) pk))])
+                        (for/list ([row (in-vector (query-row dbc (hash-ref table.sql 'select-row (virtual.sql 'row)) pk))])
                           (if (sql-null? row) #false row)))
                       (apply unsafe-table (assert record table-row?))))
-                  (define-values (key fmap) (if (and racket) (values 'select-racket read-table) (values 'select-uuid read-by-pk)))
-                  (sequence-map fmap (in-query dbc #:fetch size (hash-ref table.sql key (virtual.sql #false)))))
+                  (define-values (key fmap) (if (and racket) (values 'select-racket read-table) (values 'select-rowid read-by-pk)))
+                  (sequence-map fmap (in-query dbc #:fetch size (hash-ref table.sql key (virtual.sql 'nowhere)))))
+
+                (define (update-table [occurrence : Table] #:dbconnection [dbc : (Option Connection) #false] args! ...) : Table
+                  (define (virtual.sql) : Virtual-Statement (update.sql dbtable rowid racket '(column ...)))
+                  (cond [(false? table-rowid) (raise-unsupported-error 'create-table "cannot update records of a temporary view")]
+                        [else (let ([field : FieldType (if (void? field) (table-field occurrence) field)] ...)
+                                (check-fields 'update-table field ...)
+                                (define updated-occurrence : Table (unsafe-table field ...))
+                                (when (and dbc (equal? (table-rowid occurrence) (table-rowid updated-occurrence)))
+                                  (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
+                                  (define update.sql : Statement (hash-ref! table.sql 'update virtual.sql))
+                                  (define column-id : SQL-Datum (column-guard 'column-id (table-column updated-occurrence) dbsys)) ...
+                                  (cond [(false? racket) (query-exec dbc update.sql column-id ... (table-rowid updated-occurrence))]
+                                        [else (query-exec dbc update.sql column-id ...
+                                                          (call-with-output-string (λ [db] (write updated-occurrence db)))
+                                                          (table-rowid updated-occurrence))]))
+                                new-row)]))
                 
-                (define (update-table [occurrence : Table] args! ...) : Table
-                  ; Maybe: (void) will never be an valid value that will be inserted into database.
-                  (let ([field : FieldType (if (void? field) (table-field occurrence) field)] ...)
-                    (check-fields 'update-table field ...)
-                    (unsafe-table field ...)))
-                
-                (define (delete-table [occurrence : Table]) : Table
-                  (unsafe-table (table-field occurrence) ...))))]))
+                (define (delete-table [dbc : Connection] . [occurrences : (U Table (Listof Table)) *]) : Void
+                  (define (virtual.sql) : Virtual-Statement (delete.sql dbtable rowid))
+                  (cond [(false? table-rowid) (raise-unsupported-error 'create-table "cannot delete records from a temporary view")]
+                        [else (for ([occurrence (in-list occurrences)])
+                                (for ([row (if (list? occurrence) (in-list occurrence) (in-value occurrence))])
+                                  (query-exec dbc (hash-ref! table.sql 'delete-table-by-rowid virtual.sql) (table-rowid row))))]))))]))
 
 (define-syntax (define-schema stx)
   (syntax-parse stx
     [(_ Table-Datum (define-table id #:as ID rest ...) ...)
      #'(begin (define-type Table-Datum (U ID ...))
-              
               (define-table id #:as ID rest ...) ...)]))
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define-schema SQLiteTest
-  (define-table master #:as Master #:with uuid racket
-    ([uuid     : String        #:default (uuid:timestamp)]
-     [type     : Symbol        #:default 'table #:not-null]
-     [name     : String        #:not-null #:unique]
-     [tbl-name : String        #:unique]
-     [rootpage : Natural       #:hide]
-     [ctime    : Fixnum        #:default (current-macroseconds)]
-     [mtime    : Fixnum        #:auto current-macroseconds]
-     [deleted? : Boolean       #:default #false]))
-
-  (define-table sqlite-master #:as Sqlite-Master #:with rowid 
-    ([type     : String        #:not-null]
-     [name     : String        #:not-null]
-     [tbl-name : String        #:not-null]
-     [rootpage : Natural       #:not-null]
-     [sql      : String])))
-
-(define sqlite : Connection (sqlite3-connect #:database 'memory))
-(create-master sqlite)
-(define record : Master (make-master #:name "You are master." #:tbl-name "No, It's Doctor!!!"))
-(insert-master sqlite record)
-(for ([record : (U Master exn) (in-master sqlite #:fetch 16)])
-  (pretty-display record (if (exn? record) /dev/stderr /dev/stdout)))
-
-(newline)
-(for ([record : (U Sqlite-Master exn) (in-sqlite-master sqlite #:fetch 16)])
-  (pretty-display record (if (exn? record) /dev/stderr /dev/stdout)))
-
-(disconnect sqlite)
