@@ -18,7 +18,7 @@
      [ctime    : Fixnum        #:default (current-milliseconds)]
      [mtime    : Fixnum        #:auto (current-milliseconds)]))
 
-  (define-table sqlite-master #:as Sqlite-Master #:with rowid
+  (define-table [sqlite-master sqlite-master] #:as Sqlite-Master #:with rowid
     ([type     : String        #:not-null]
      [name     : String        #:not-null]
      [tbl-name : String        #:not-null]

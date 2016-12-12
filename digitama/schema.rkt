@@ -19,36 +19,41 @@
 (define-syntax (define-table stx)
   (define (parse-field-definition tablename rowid racket? stx)
     (syntax-parse stx
-      [(field DataType (~or (~optional (~seq #:check contract:expr))
-                            (~optional (~or (~seq #:default defval) (~seq #:auto generate)) #:name "#:default or #:auto")
-                            (~optional (~seq #:guard guard) #:name "#:guard")
-                            (~optional (~seq (~and #:not-null not-null)) #:name "#:not-null")
-                            (~optional (~seq (~and #:unique unique)) #:name "#:unique")
-                            (~optional (~seq (~and #:hide hide)) #:name "#:hide")) ...)
+      [(field Type (~or (~optional (~seq #:check contract:expr))
+                        (~optional (~or (~seq #:default defval) (~seq #:auto generate)) #:name "#:default or #:auto")
+                        (~optional (~seq #:guard guard) #:name "#:guard")
+                        (~optional (~seq (~and #:not-null not-null)) #:name "#:not-null")
+                        (~optional (~seq (~and #:unique unique)) #:name "#:unique")
+                        (~optional (~seq (~and #:hide hide)) #:name "#:hide")) ...)
+       (define-values (DataType SQLType)
+         (syntax-parse #'Type
+           [R:id (values #'R (id->sql #'R 'type))]
+           [(R SQL) (values #'R (id->sql #'SQL 'raw))]))
        (define-values (primary-field? not-null?) (values (eq? (syntax-e #'field) rowid) (attribute not-null)))
        (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
-       (values (and primary-field? (list table-field #'DataType))
-               (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
-                     table-field (if (attribute contract) #'contract #'#true)
-                     (if (or primary-field? (attribute not-null)) #'DataType #'(Option DataType))
+       (values (and primary-field? (list table-field DataType))
+               (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field)))) table-field
+                     (if (attribute contract) #'contract #'#true)
+                     (if (or primary-field? (attribute not-null)) DataType #`(Option #,(syntax-e DataType)))
                      (if (attribute generate) #'generate #'(void))
                      (cond [(attribute defval) #'(defval)]
                            [(attribute generate) #'(generate)]
                            [(or primary-field? not-null?) #'()]
                            [else #'(#false)]))
                (unless (and racket? (attribute hide))
-                 (list #'field (id->sql #'field) table-field #'DataType
+                 (list #'field (id->sql #'field)
+                       table-field DataType SQLType
                        (or (attribute guard) #'racket->sql)
                        (and not-null? #'#true)
                        (and (attribute unique) #'#true))))]))
   (syntax-parse stx #:datum-literals [:]
-    [(_ id #:as Table #:with primary-key (~optional prefab) ([field : DataType constraints ...] ...)
+    [(_ tbl #:as Table #:with primary-key (~optional prefab) ([field : DataType constraints ...] ...)
         (~optional (~seq #:check record-contract:expr) #:defaults ([record-contract #'#true])))
      (with-syntax* ([(rowid ___) (list (id->sql #'primary-key) (format-id #'id "..."))]
-                    [(table dbtable) (syntax-parse #'id [(id db) (list #'id (id->sql #'db))] [id (list #'id (id->sql #'id))])]
+                    [(table dbtable) (syntax-parse #'tbl [r:id (list #'r (id->sql #'r))] [(r db) (list #'r (id->sql #'db))])]
                     [(racket :opt) (if (attribute prefab) (list (id->sql #'prefab) #'#:prefab) (list #'#false #'#:transparent))]
                     [([(table-rowid RowidType) (:field table-field field-contract FieldType on-update [defval ...]) ...]
-                      [(column-id column table-column ColumnType column-guard column-not-null column-unique) ...]
+                      [(column-id column table-column ColumnType DBType column-guard column-not-null column-unique) ...]
                       [table? table-row?] [check-fields table.sql]
                       [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
                      (let ([tablename (syntax-e #'table)]
@@ -102,7 +107,8 @@
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
                   (when (false? table-rowid) (raise-unsupported-error 'create-table "no need to create a temporary view"))
                   (define (virtual.sql) : Virtual-Statement
-                    (create-table.sql silent? dbtable rowid racket '(column ...) '(column-not-null ...) '(column-unique ...)))
+                    (create-table.sql silent? dbtable rowid racket '(column ...) '(DBType ...)
+                                      '(column-not-null ...) '(column-unique ...)))
                   (query-exec dbc (hash-ref! table.sql (if silent? 'create-if-not-exists 'create) virtual.sql)))
 
                 (define (insert-table [dbc : Connection] [records : (U Table (Listof Table))]
@@ -114,7 +120,7 @@
                   (for ([row (if (list? records) (in-list records) (in-value records))])
                     (define column-id : SQL-Datum (column-guard 'column-id (table-column row) dbsys)) ...
                     (cond [(false? racket) (query-exec dbc insert.sql column-id ...)]
-                          [else (query-exec dbc insert.sql column-id ... (call-with-output-string (λ [db] (write row db))))])))
+                          [else (query-exec dbc insert.sql column-id ... (call-with-output-bytes (λ [db] (write row db))))])))
        
                 (define (delete-table [dbc : Connection] [records : (U Table (Listof Table))]) : Void
                   (define (virtual.sql) : Virtual-Statement (delete.sql dbtable rowid))
@@ -155,7 +161,7 @@
                                   (define column-id : SQL-Datum (column-guard 'column-id (table-column record) dbsys)) ...
                                   (cond [(false? racket) (query dbc update.sql column-id ... pk)]
                                         [else (query dbc update.sql column-id ...
-                                                     (call-with-output-string (λ [db] (write record db))) pk)])))]))))]))
+                                                     (call-with-output-bytes (λ [db] (write record db))) pk)])))]))))]))
 
 (define-syntax (define-schema stx)
   (syntax-parse stx

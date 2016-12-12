@@ -5,6 +5,8 @@
 (require typed/db)
 (require digimon/system)
 
+(define-type SQL-ColumnType (U Symbol (Pairof Symbol Any)))
+
 (define-predicate sql-datum? SQL-Datum)
 (define $? : (-> DBSystem String) (λ [dbms] (if (eq? (dbsystem-name dbms) 'postgresql) "$1" "?")))
 
@@ -28,22 +30,24 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define create-table.sql : (-> Boolean String String (Option String) (Listof String) (Listof Boolean) (Listof Boolean) Virtual-Statement)
-  (lambda [silent? table pk racket columns not-nulls uniques]
+(define create-table.sql : (-> Boolean String String (Option String) (Listof String) (Listof String)
+                               (Listof Boolean) (Listof Boolean) Virtual-Statement)
+  (lambda [silent? table pk racket columns types not-nulls uniques]
     (virtual-statement
      (λ [[dbms : DBSystem]]
        (define &extra : (Boxof String) (box ""))
-       (define (+++ [name : String] !null uniq) : String
-         (cond [(equal? name pk) (set-box! &extra " WITHOUT ROWID") (string-append name " PRIMARY KEY")]
-               [(and !null uniq) (string-append name " UNIQUE NOT NULL")]
-               [(and !null) (string-append name " NOT NULL")]
-               [(and uniq) (string-append name " UNIQUE")]
-               [else name]))
+       (define (++++ [name : String] [type : String] !null uniq) : String
+         (define name+type : String (string-append name " " type))
+         (cond [(equal? name pk) (set-box! &extra " WITHOUT ROWID") (string-append name+type " PRIMARY KEY")]
+               [(and !null uniq) (string-append name+type " UNIQUE NOT NULL")]
+               [(and !null) (string-append name+type " NOT NULL")]
+               [(and uniq) (string-append name+type " UNIQUE")]
+               [else name+type]))
        (case (dbsystem-name dbms)
          [(sqlite3)
           (format "CREATE ~a ~a (~a~a)~a;" (if silent? "TABLE IF NOT EXISTS" "TABLE")
-                  table (string-join (map +++ columns not-nulls uniques) ", ")
-                  (if (false? racket) "" (format ", ~a TEXT NOT NULL" racket)) (unbox &extra))]
+                  table (string-join (map ++++ columns types not-nulls uniques) ", ")
+                  (if (false? racket) "" (format ", ~a BLOB NOT NULL" racket)) (unbox &extra))]
          [else (raise-unsupported-error 'create-table "unknown database system: ~a" (dbsystem-name dbms))])))))
 
 (define insert-into.sql : (-> Boolean String (Option String) (Listof String) Virtual-Statement)

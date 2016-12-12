@@ -13,6 +13,24 @@
                                          [name (regexp-replaces (symbol->string name) patterns)])
                                     (if (string? name) name (bytes->string/utf-8 name)))])))))
 
-(define id->sql : (-> Identifier Syntax)
-  (lambda [<id>]
-    (datum->syntax <id> (name->sql (syntax-e <id>)))))
+(define type->sql : (-> Symbol String)
+  (lambda [type]
+    (case type
+      [(Symbol String) "VARCHAR"]
+      [(Natural Integer) "DECIMAL"]
+      [(Fixnum Index Byte One Zero) "NUMERIC"]
+      [(Flonum Float Number) "REAL"]
+      [(Bytes) "BLOB"]
+      [else (let ([r (string-downcase (symbol->string type))])
+              (cond [(regexp-match? #px"integer|rational" r) "NUMERIC"]
+                    [(regexp-match? #px"fixnum|index" r) "INTEGER"]
+                    [(regexp-match? #px"flonum|float|inexact" r) "REAL"]
+                    [else (string-upcase r)]))])))
+
+(define id->sql : (->* (Identifier) (Symbol) Syntax)
+  (lambda [<id> [type 'name]]
+    (define datum : Symbol (syntax-e <id>))
+    (datum->syntax <id> (case type
+                          [(type) (type->sql datum)]
+                          [(name) (name->sql datum)]
+                          [else (symbol->string datum)]))))
