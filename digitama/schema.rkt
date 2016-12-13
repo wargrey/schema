@@ -140,7 +140,9 @@
                       (define record : (Listof SQL-Datum)
                         (for/list ([row (in-vector (query-row dbc (hash-ref table.sql 'select-row (virtual.sql 'row)) pk))])
                           (if (sql-null? row) #false row)))
-                      (apply unsafe-table (assert record table-row?))))
+                      (cond [(table-row? record) (apply unsafe-table record)]
+                            [else (raise-schema-error 'update-table 'assertion `((struct . table) (record . ,pk) (got . ,record))
+                                                      "the view record is malformed")])))
                   (define-values (key fmap) (if (and racket) (values 'select-racket read-table) (values 'select-rowid read-by-pk)))
                   (sequence-map fmap (in-query dbc #:fetch size (hash-ref table.sql key (virtual.sql 'nowhere)))))
 
