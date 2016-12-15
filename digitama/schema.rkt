@@ -25,7 +25,7 @@
                         (~optional (~seq (~and #:not-null not-null)) #:name "#:not-null")
                         (~optional (~seq (~and #:unique unique)) #:name "#:unique")
                         (~optional (~seq (~and #:hide hide)) #:name "#:hide")
-                        (~optional (~seq (~and #:% comment)) #:name "#:hide")) ...)
+                        (~optional (~seq (~and #:% comment)) #:name "#:%")) ...)
        (define-values (DataType SQLType)
          (syntax-parse #'Type
            [(R #:as SQL) (values #'R (id->sql #'SQL 'raw))]
