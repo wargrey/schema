@@ -25,7 +25,7 @@
               (cond [(regexp-match? #px"integer|rational" r) "NUMERIC"]
                     [(regexp-match? #px"fixnum|index" r) "INTEGER"]
                     [(regexp-match? #px"flonum|float|inexact" r) "REAL"]
-                    [else (string-upcase r)]))])))
+                    [else "VARCHAR"]))])))
 
 (define id->sql : (->* (Identifier) (Symbol) Syntax)
   (lambda [<id> [type 'name]]
