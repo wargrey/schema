@@ -27,8 +27,9 @@
                         (~optional (~seq (~and #:hide hide)) #:name "#:hide")) ...)
        (define-values (DataType SQLType)
          (syntax-parse #'Type
+           [(R #:as SQL) (values #'R (id->sql #'SQL 'raw))]
            [R:id (values #'R (id->sql #'R 'type))]
-           [(R SQL) (values #'R (id->sql #'SQL 'raw))]))
+           [R (values #'R #'"VARCHAR")]))
        (define-values (primary-field? not-null?) (values (eq? (syntax-e #'field) rowid) (attribute not-null)))
        (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
        (values (and primary-field? (list table-field DataType))
