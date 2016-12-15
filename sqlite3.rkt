@@ -5,9 +5,18 @@
 (require typed/db)
 (require digimon/system)
 
+(require "digitama/schema.rkt")
 (require "digitama/normalize.rkt")
 
 (define-type Pragma-Datum (U Real Boolean Symbol String))
+
+(define-schema SQLite3-Tables
+  (define-table [sqlite-master sqlite-master] #:as Sqlite-Master #:with rowid
+    ([type     : String        #:not-null]
+     [name     : String        #:not-null]
+     [tbl-name : String        #:not-null]
+     [rootpage : Natural       #:not-null]
+     [sql      : String])))
 
 (define sqlite-pragma : (->* (Connection Symbol) ((U Pragma-Datum Void) #:schema (Option Symbol)) (U Simple-Result Rows-Result))
   ;;; https://www.sqlite.org/pragma.html

@@ -16,14 +16,7 @@
      [tbl-name : String        #:not-null #:check (string-prefix? tbl-name "tbl")]
      [rootpage : Natural       #:default (random 32)]
      [ctime    : Fixnum        #:default (current-milliseconds)]
-     [mtime    : Fixnum        #:auto (current-milliseconds)]))
-
-  (define-table [sqlite-master sqlite-master] #:as Sqlite-Master #:with rowid
-    ([type     : String        #:not-null]
-     [name     : String        #:not-null]
-     [tbl-name : String        #:not-null]
-     [rootpage : Natural       #:not-null]
-     [sql      : String])))
+     [mtime    : Fixnum        #:auto (current-milliseconds)])))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 
