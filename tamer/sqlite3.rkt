@@ -3,7 +3,7 @@
 (provide (all-defined-out))
 
 (require "../main.rkt")
-(require "../digitama/sqlite3.rkt")
+(require "../sqlite3.rkt")
 
 (define types : (Listof Symbol) '(table index view trigger))
 (define plan : Index (length types))

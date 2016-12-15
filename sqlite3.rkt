@@ -1,11 +1,11 @@
-#lang typed/racket
+#lang typed/racket/base
 
 (provide (all-defined-out))
 
 (require typed/db)
 (require digimon/system)
 
-(require "normalize.rkt")
+(require "digitama/normalize.rkt")
 
 (define-type Pragma-Datum (U Real Boolean Symbol String))
 
@@ -18,7 +18,6 @@
     (define pragma.sql : String (string-append "PRAGMA " (if schema (string-append (name->sql schema) ".") "") (name->sql name)))
     (cond [(void? argument) (query sqlite (string-append pragma.sql ";"))]
           [else (query sqlite (format (string-append pragma.sql " = ~a;")
-                                      (cond [(false? argument) "false"]
-                                            [(boolean? argument) "true"]
+                                      (cond [(boolean? argument) (if argument "true" "false")]
                                             [(symbol? argument) (name->sql argument)]
                                             [else argument])))])))
