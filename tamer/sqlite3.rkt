@@ -21,7 +21,7 @@
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 
 (create-master :memory:)
-(sqlite-pragma :memory: 'table-info 'master)
+(sqlite-table-info :memory: 'master #("type" "notnull" "pk"))
 (select-sqlite-master :memory:)
 
 (with-handlers ([exn:schema? (λ [[e : exn:schema]] (pretty-display (exn:fail:sql-info e) /dev/stderr))])
