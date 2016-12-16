@@ -7,6 +7,9 @@
 
 (require (for-syntax "normalize.rkt"))
 
+(define-type Schema schema)
+
+(struct schema () #:prefab)
 (struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
 
 (define raise-schema-error : (-> Symbol Symbol (Listof (Pairof Symbol Any)) String Any * exn:schema)
@@ -49,11 +52,11 @@
                        (and not-null? #'#true)
                        (and (attribute unique) #'#true))))]))
   (syntax-parse stx #:datum-literals [:]
-    [(_ tbl #:as Table #:with primary-key (~optional prefab) ([field : DataType constraints ...] ...)
+    [(_ tbl #:as Table #:with primary-key (~optional index-only) ([field : DataType constraints ...] ...)
         (~optional (~seq #:check record-contract:expr) #:defaults ([record-contract #'#true])))
      (with-syntax* ([(rowid ___) (list (id->sql #'primary-key) (format-id #'id "..."))]
                     [(table dbtable) (syntax-parse #'tbl [r:id (list #'r (id->sql #'r))] [(r db) (list #'r (id->sql #'db))])]
-                    [(racket :opt) (if (attribute prefab) (list (id->sql #'prefab) #'#:prefab) (list #'#false #'#:transparent))]
+                    [racket (if (attribute index-only) (id->sql #'index-only) #'#false)]
                     [([(table-rowid RowidType) (:field table-field field-contract FieldType on-update [defval ...]) ...]
                       [(column-id column table-column ColumnType DBType column-guard column-not-null column-unique) ...]
                       [table? table-row?] [check-fields table.sql]
@@ -80,7 +83,7 @@
                        (list (cons :fld (cons mkarg (car syns)))
                              (cons :fld (cons rearg (cadr syns)))))])
        #'(begin (define-type Table table)
-                (struct table ([field : FieldType] ...) :opt #:constructor-name unsafe-table)
+                (struct table schema ([field : FieldType] ...) #:prefab #:constructor-name unsafe-table)
                 (define-predicate table-row? (List FieldType ...))
                 (define table.sql : (HashTable Symbol Statement) (make-hasheq))
                 
