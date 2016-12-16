@@ -94,7 +94,7 @@
                                       #:when (false? result)) expected))
                          (define ?fields (remove-duplicates (filter symbol? (flatten expected))))
                          (define given (filter-map (λ [f v] (and (memq f ?fields) (cons f v))) (list 'field ...) (list field ...)))
-                         (raise-schema-error func 'contract `((struct . table) (expected . ,(~s expected)) (given . ,(~s given)))
+                         (raise-schema-error func 'contract `((struct . table) (expected . ,(~s expected)) (given . ,given))
                                              "constraint violation"))]))
 
                 (define (make-table #:unsafe? [unsafe? : Boolean #false] mkargs ...) : Table
