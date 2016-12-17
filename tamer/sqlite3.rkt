@@ -20,6 +20,8 @@
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 
+(with-handlers ([exn? pretty-display]) (create-sqlite-master :memory:))
+
 (create-master :memory:)
 (sqlite-table-info :memory: 'master #("type" "notnull" "pk"))
 (select-sqlite-master :memory:)

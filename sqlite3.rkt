@@ -1,4 +1,4 @@
-#lang typed/racket/base
+#lang digimon
 
 (provide (all-defined-out))
 
@@ -22,7 +22,7 @@
   ;;; https://www.sqlite.org/pragma.html
   (lambda [sqlite name [argument (void)] #:schema [schema 'main]]
     (define dbms : Symbol (dbsystem-name (connection-dbsystem sqlite)))
-    (unless (eq? dbms 'sqlite3) (raise-unsupported-error 'sqlite3-pragma "not the target database system: ~a" dbms))
+    (unless (eq? dbms 'sqlite3) (raise (throw exn:fail:unsupported "sqlite3-pragma: not the target database system: ~a" dbms)))
     (define pragma.sql : String (string-append "PRAGMA " (name->sql schema) "." (name->sql name)))
     (cond [(void? argument) (query sqlite (string-append pragma.sql ";"))]
           [else (query sqlite (format (string-append pragma.sql " = ~a;")

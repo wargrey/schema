@@ -97,8 +97,8 @@
                                       #:when (false? result)) expected))
                          (define ?fields (remove-duplicates (filter symbol? (flatten expected))))
                          (define given (filter-map (λ [f v] (and (memq f ?fields) (cons f v))) (list 'field ...) (list field ...)))
-                         (raise-schema-error func 'contract `((struct . table) (expected . ,(~s expected)) (given . ,given))
-                                             "constraint violation"))]))
+                         (throw [exn:schema 'contract `((struct . table) (expected . ,(~s expected)) (given . ,given))]
+                                func "constraint violation"))]))
 
                 (define (make-table #:unsafe? [unsafe? : Boolean #false] mkargs ...) : Table
                   (when (not unsafe?) (check-fields 'make-table field ...))
@@ -110,7 +110,7 @@
                     (unsafe-table field ...)))
 
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
-                  (when (false? table-rowid) (raise-unsupported-error 'create-table "no need to create a temporary view"))
+                  (when (false? table-rowid) (throw exn:fail:unsupported 'create-table "cannot create a temporary view"))
                   (define (virtual.sql) : Virtual-Statement
                     (create-table.sql silent? dbtable rowid racket '(column ...) '(DBType ...)
                                       '(column-not-null ...) '(column-unique ...)))
@@ -119,7 +119,7 @@
                 (define (insert-table [dbc : Connection] [records : (U Table (Listof Table))]
                                       #:or-replace? [replace? : Boolean #false]) : Void
                   (define (virtual.sql) : Virtual-Statement (insert-into.sql replace? dbtable racket '(column ...)))
-                  (when (false? table-rowid) (raise-unsupported-error 'create-table "cannot insert records into a temporary view"))
+                  (when (false? table-rowid) (throw exn:fail:unsupported 'insert-table "cannot insert records into a temporary view"))
                   (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
                   (define insert.sql : Statement (hash-ref! table.sql (if replace? 'replace 'insert) virtual.sql))
                   (for ([row (if (list? records) (in-list records) (in-value records))])
@@ -129,7 +129,7 @@
        
                 (define (delete-table [dbc : Connection] [records : (U Table (Listof Table))]) : Void
                   (define (virtual.sql) : Virtual-Statement (delete.sql dbtable rowid))
-                  (cond [(false? table-rowid) (raise-unsupported-error 'create-table "cannot delete records from a temporary view")]
+                  (cond [(false? table-rowid) (throw exn:fail:unsupported 'delete-table "cannot delete records from a temporary view")]
                         [else (for ([record (if (list? records) (in-list records) (in-value records))])
                                 (query-exec dbc (hash-ref! table.sql 'delete-table-by-rowid virtual.sql) (table-rowid record)))]))
 
@@ -146,8 +146,8 @@
                         (for/list ([row (in-vector (query-row dbc (hash-ref table.sql 'select-row (virtual.sql 'row)) pk))])
                           (if (sql-null? row) #false row)))
                       (cond [(table-row? record) (apply unsafe-table record)]
-                            [else (raise-schema-error 'update-table 'assertion `((struct . table) (record . ,pk) (got . ,record))
-                                                      "the view record is malformed")])))
+                            [else (throw [exn:schema 'assertion `((struct . table) (record . ,pk) (got . ,record))]
+                                         'select-table "the view record is malformed")])))
                   (define-values (key fmap) (if (and racket) (values 'select-racket read-table) (values 'select-rowid read-by-pk)))
                   (sequence-map fmap (in-query dbc #:fetch size (hash-ref table.sql key (virtual.sql 'nowhere)))))
 
@@ -156,15 +156,15 @@
                   (define (virtual.sql [ensure? : Boolean]) : (-> Virtual-Statement)
                     (thunk (cond [(not ensure?) (update.sql dbtable rowid racket '(column ...))]
                                  [else (simple-select.sql 'ckrowid dbtable rowid racket '(column ...))])))
-                  (cond [(false? table-rowid) (raise-unsupported-error 'create-table "cannot update records of a temporary view")]
+                  (cond [(false? table-rowid) (throw exn:fail:unsupported 'update-table "cannot update records of a temporary view")]
                         [else (let ([dbsys (dbsystem-name (connection-dbsystem dbc))])
                                 (define update.sql : Statement (hash-ref! table.sql 'update (virtual.sql #false)))
                                 (define check.sql : Statement (hash-ref! table.sql 'check-rowid (virtual.sql #true)))
                                 (for ([record (if (list? records) (in-list records) (in-value records))])
                                   (define pk : RowidType (table-rowid record))
                                   (when (and check? (false? (query-maybe-value dbc check.sql pk)))
-                                    (raise-schema-error 'update-table 'norow `((struct . table) (record . ,pk))
-                                                        "no such record found in the table"))
+                                    (throw [exn:schema 'norow `((struct . table) (record . ,pk))]
+                                           'update "no such record found in the table"))
                                   (define column-id : SQL-Datum (column-guard 'column-id (table-column record) dbsys)) ...
                                   (cond [(false? racket) (query dbc update.sql column-id ... pk)]
                                         [else (query dbc update.sql column-id ...

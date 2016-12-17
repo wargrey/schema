@@ -1,11 +1,8 @@
-#lang typed/racket
+#lang digimon
 
 (provide (all-defined-out))
 
 (require typed/db)
-(require digimon/system)
-
-(define-type SQL-ColumnType (U Symbol (Pairof Symbol Any)))
 
 (define-predicate sql-datum? SQL-Datum)
 (define $? : (-> DBSystem String) (λ [dbms] (if (eq? (dbsystem-name dbms) 'postgresql) "$1" "?")))
@@ -48,7 +45,7 @@
           (format "CREATE ~a ~a (~a~a)~a;" (if silent? "TABLE IF NOT EXISTS" "TABLE")
                   table (string-join (map ++++ columns types not-nulls uniques) ", ")
                   (if (false? racket) "" (format ", ~a BLOB NOT NULL" racket)) (unbox &extra))]
-         [else (raise-unsupported-error 'create-table "unknown database system: ~a" (dbsystem-name dbms))])))))
+         [else (throw exn:fail:unsupported 'create-table.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
 (define insert-into.sql : (-> Boolean String (Option String) (Listof String) Virtual-Statement)
   (lambda [replace? table racket columns]
@@ -65,7 +62,7 @@
           (format "INSERT ~a ~a (~a~a) VALUES ($1~a);" (if replace? "OR REPLACE INTO" "INTO") table (car columns)
                   (apply string-append (reverse snmuloc))
                   (apply string-append (reverse seulva$)))]
-         [else (raise-unsupported-error 'create-table "unknown database system: ~a" (dbsystem-name dbms))])))))
+         [else (throw exn:fail:unsupported 'insert-into.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
 (define update.sql : (-> String String (Option String) (Listof String) Virtual-Statement)
   (lambda [table pk racket columns]
@@ -77,7 +74,7 @@
             (for/list : (Listof String) ([col (in-list (append columns (if racket (list racket) null)))] [idx (in-naturals 1)])
               (string-append col " = $" (number->string idx))))
           (format "UPDATE ~a SET ~a WHERE ~a = $0;" table (string-join column=$values ", ") pk)]
-         [else (raise-unsupported-error 'create-table "unknown database system: ~a" (dbsystem-name dbms))])))))
+         [else (throw exn:fail:unsupported 'update.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
 (define simple-select.sql : (-> Symbol String String (Option String) (Listof String) Virtual-Statement)
   (lambda [which table pk racket columns]
