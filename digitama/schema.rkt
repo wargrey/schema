@@ -8,15 +8,27 @@
 (require (for-syntax "normalize.rkt"))
 
 (define-type Schema schema)
+(define-type Schema-Message msg:schema)
 
 (struct schema () #:prefab)
 (struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
+(struct msg:schema msg:log ([maniplation : Symbol] [table : Symbol]) #:prefab)
 
-(define raise-schema-error : (-> Symbol Symbol (Listof (Pairof Symbol Any)) String Any * exn:schema)
-  (lambda [src sqlstate info msgfmt . argl]
-    (define message : String (if (null? argl) msgfmt (apply format msgfmt argl)))
-    (raise (make-exn:schema (format "~a: ~a" src message) (current-continuation-marks)
-                            sqlstate (list* (cons 'code sqlstate) (cons 'message message) info)))))
+(define make-schema-message : (-> Symbol Struct-TypeTop Any [#:level (Option Log-Level)] Any * Schema-Message)
+  (lambda [maniplation struct:table urgent-hint #:level [level-hint #false] . rest]
+    (define level : Log-Level (or level-hint (if (exn? urgent) 'error 'info)))
+    (define table : Symbol (value-name struct:table))
+    (define message : String
+      (cond [(exn? urgent) (exn-message urgent)]
+            [(null? rest) ""]
+            [else (apply format (~a (car rest)) (cdr rest))]))
+    (define urgent : Any
+      (cond [(exn:fail:sql? urgent) (exn:fail:sql-info urgent)]
+            [(exn? urgent) (continuation-mark->stacks (exn-continuation-marks urgent))]
+            [else urgent]))
+    (cond [(exn:fail:sql? urgent) (msg:schema level message urgent (value-name urgent) maniplation table)]
+          [(exn? urgent) (msg:schema level message urgent (value-name urgent) maniplation table)]
+          [else (msg:schema level message urgent table maniplation table)])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-syntax (define-table stx)
