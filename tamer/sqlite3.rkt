@@ -20,8 +20,6 @@
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 
-(with-handlers ([exn? pretty-display]) (create-sqlite-master :memory:))
-
 (create-master :memory:)
 (sqlite-table-info :memory: 'master #("type" "notnull" "pk"))
 (select-sqlite-master :memory:)
@@ -49,5 +47,8 @@
 
 (for ([record (in-master :memory:)])
   (pretty-display record (if (exn? record) /dev/stderr /dev/stdout)))
+
+(with-handlers ([exn? (λ [[e : exn]] (make-schema-message struct:sqlite-master null 'create #:error e))])
+  (create-sqlite-master :memory:))
 
 (disconnect :memory:)

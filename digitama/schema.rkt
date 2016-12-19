@@ -12,22 +12,28 @@
 
 (struct schema () #:prefab)
 (struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
-(struct msg:schema msg:log ([table : Symbol] [maniplation : Symbol]) #:prefab)
+(struct msg:schema msg:log ([occurrences : (U Schema (Listof Schema))] [maniplation : Symbol] [status : (Listof (Pairof Symbol Any))])
+  #:prefab)
+                
+(define make-schema-message : (-> Struct-TypeTop (U Schema (Listof Schema)) Symbol [#:level Log-Level] [#:error exn] Any * Schema-Message)
+  (lambda [struct:table occurrences maniplation #:level [level #false] #:error [err #false] . messages]
+    (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
+    (define-values (smart-level smart-brief)
+      (cond [(false? err) (values 'info "")]
+            [else (values 'error (exn-message err))]))
+    (msg:schema (value-name struct:table)
+                (or level smart-level)
+                (cond [(null? messages) smart-brief]
+                      [else (apply format (~a (car messages)) (cdr messages))])
+                occurrences maniplation
+                (cond [(false? err) null]
+                      [(exn:schema? err) (info++ err (exn:fail:sql-info err))]
+                      [(exn:fail:sql? err) (exn:fail:sql-info err)]
+                      [else (info++ err (list (cons 'struct (object-name err))))]))))
 
-(define make-schema-message : (-> Symbol Symbol Any [#:level (Option Log-Level)] Any * Schema-Message)
-  (lambda [table maniplation urgent-hint #:level [level-hint #false] . rest]
-    (define level : Log-Level (or level-hint (if (exn? urgent) 'error 'info)))
-    (define message : String
-      (cond [(exn? urgent) (exn-message urgent)]
-            [(null? rest) ""]
-            [else (apply format (~a (car rest)) (cdr rest))]))
-    (define urgent : Any
-      (cond [(exn:fail:sql? urgent) (exn:fail:sql-info urgent)]
-            [(exn? urgent) (continuation-mark->stacks (exn-continuation-marks urgent))]
-            [else urgent]))
-    (cond [(exn:fail:sql? urgent) (msg:schema level message urgent (value-name urgent) table maniplation)]
-          [(exn? urgent) (msg:schema level message urgent (value-name urgent) table maniplation)]
-          [else (msg:schema level message urgent table table maniplation)])))
+(define exn:schema->message : (-> exn:fail:sql Prefab-Message)
+  (lambda [e]
+    (exn->message e #:detail (exn:fail:sql-info e))))
 
 (define exn:sql-info-ref : (->* (exn:fail:sql Symbol) ((-> Any Any)) Any)
   (lambda [e key [-> values]]
