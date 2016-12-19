@@ -29,10 +29,10 @@
           [(exn? urgent) (msg:schema level message urgent (value-name urgent) table maniplation)]
           [else (msg:schema level message urgent table table maniplation)])))
 
-(define exn:sql-info-ref : (-> exn:fail:sql Symbol Any)
-  (lambda [e key]
+(define exn:sql-info-ref : (->* (exn:fail:sql Symbol) ((-> Any Any)) Any)
+  (lambda [e key [-> values]]
     (define pinfo (assq key (exn:fail:sql-info e)))
-    (and pinfo (cdr pinfo))))
+    (and pinfo (-> (cdr pinfo)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-syntax (define-table stx)
@@ -112,7 +112,9 @@
                                       [expected (in-list (list 'record-contract 'field-contract ...))]
                                       #:when (false? result)) expected))
                          (define ?fields (remove-duplicates (filter symbol? (flatten expected))))
-                         (define given (filter-map (λ [f v] (and (memq f ?fields) (cons f v))) (list 'field ...) (list field ...)))
+                         (define given : (HashTable Symbol Any)
+                           (for/hash ([f (in-list (list 'field ...))] [v (in-list (list field ...))] #:when (memq f ?fields))
+                             (values f v)))
                          (throw [exn:schema 'contract `((struct . table) (expected . ,(~s expected)) (given . ,given))]
                                 func "constraint violation"))]))
 
