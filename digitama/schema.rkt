@@ -12,12 +12,11 @@
 
 (struct schema () #:prefab)
 (struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
-(struct msg:schema msg:log ([maniplation : Symbol] [table : Symbol]) #:prefab)
+(struct msg:schema msg:log ([table : Symbol] [maniplation : Symbol]) #:prefab)
 
-(define make-schema-message : (-> Symbol Struct-TypeTop Any [#:level (Option Log-Level)] Any * Schema-Message)
-  (lambda [maniplation struct:table urgent-hint #:level [level-hint #false] . rest]
+(define make-schema-message : (-> Symbol Symbol Any [#:level (Option Log-Level)] Any * Schema-Message)
+  (lambda [table maniplation urgent-hint #:level [level-hint #false] . rest]
     (define level : Log-Level (or level-hint (if (exn? urgent) 'error 'info)))
-    (define table : Symbol (value-name struct:table))
     (define message : String
       (cond [(exn? urgent) (exn-message urgent)]
             [(null? rest) ""]
@@ -26,9 +25,9 @@
       (cond [(exn:fail:sql? urgent) (exn:fail:sql-info urgent)]
             [(exn? urgent) (continuation-mark->stacks (exn-continuation-marks urgent))]
             [else urgent]))
-    (cond [(exn:fail:sql? urgent) (msg:schema level message urgent (value-name urgent) maniplation table)]
-          [(exn? urgent) (msg:schema level message urgent (value-name urgent) maniplation table)]
-          [else (msg:schema level message urgent table maniplation table)])))
+    (cond [(exn:fail:sql? urgent) (msg:schema level message urgent (value-name urgent) table maniplation)]
+          [(exn? urgent) (msg:schema level message urgent (value-name urgent) table maniplation)]
+          [else (msg:schema level message urgent table table maniplation)])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-syntax (define-table stx)
