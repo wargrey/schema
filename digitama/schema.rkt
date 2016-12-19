@@ -111,10 +111,10 @@
                            (for/list ([result (in-list (list record-contract field-contract ...))]
                                       [expected (in-list (list 'record-contract 'field-contract ...))]
                                       #:when (false? result)) expected))
-                         (define ?fields (remove-duplicates (filter symbol? (flatten expected))))
-                         (define given : (HashTable Symbol Any)
-                           (for/hash ([f (in-list (list 'field ...))] [v (in-list (list field ...))] #:when (memq f ?fields))
-                             (values f v)))
+                         (define given : HashTableTop
+                           (let ([?fields (remove-duplicates (filter symbol? (flatten expected)))])
+                             (for/hasheq ([f (in-list (list 'field ...))] [v (in-list (list field ...))] #:when (memq f ?fields))
+                               (values f v))))
                          (throw [exn:schema 'contract `((struct . table) (expected . ,(~s expected)) (given . ,given))]
                                 func "constraint violation"))]))
 
