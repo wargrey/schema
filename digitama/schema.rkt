@@ -29,6 +29,11 @@
           [(exn? urgent) (msg:schema level message urgent (value-name urgent) table maniplation)]
           [else (msg:schema level message urgent table table maniplation)])))
 
+(define exn:sql-info-ref : (-> exn:fail:sql Symbol Any)
+  (lambda [e key]
+    (define pinfo (assq key (exn:fail:sql-info e)))
+    (and pinfo (cdr pinfo))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-syntax (define-table stx)
   (define (parse-field-definition tablename rowid racket? stx)
