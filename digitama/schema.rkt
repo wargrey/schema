@@ -12,8 +12,7 @@
 
 (struct schema () #:prefab)
 (struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
-(struct msg:schema msg:log ([occurrences : (U Schema (Listof Schema))] [maniplation : Symbol] [status : (Listof (Pairof Symbol Any))])
-  #:prefab)
+(struct msg:schema msg:log ([occurrences : (U Schema (Listof Schema))] [maniplation : Symbol]) #:prefab)
                 
 (define make-schema-message : (-> Struct-TypeTop (U Schema (Listof Schema)) Symbol [#:level Log-Level] [#:error exn] Any * Schema-Message)
   (lambda [struct:table occurrences maniplation #:level [level #false] #:error [err #false] . messages]
@@ -21,23 +20,26 @@
     (define-values (smart-level smart-brief)
       (cond [(false? err) (values 'info "")]
             [else (values 'error (exn-message err))]))
-    (msg:schema (value-name struct:table)
-                (or level smart-level)
+    (msg:schema (or level smart-level)
                 (cond [(null? messages) smart-brief]
                       [else (apply format (~a (car messages)) (cdr messages))])
-                occurrences maniplation
                 (cond [(false? err) null]
                       [(exn:schema? err) (info++ err (exn:fail:sql-info err))]
                       [(exn:fail:sql? err) (exn:fail:sql-info err)]
-                      [else (info++ err (list (cons 'struct (object-name err))))]))))
+                      [else (info++ err (list (cons 'struct (object-name err))))])
+                (value-name struct:table) occurrences maniplation)))
 
-(define exn:schema->message : (-> exn:fail:sql Prefab-Message)
+(define exn:schema->message : (-> exn:fail:sql Log-Message)
   (lambda [e]
     (exn->message e #:detail (exn:fail:sql-info e))))
 
-(define exn:sql-info-ref : (->* (exn:fail:sql Symbol) ((-> Any Any)) Any)
+(define exn:sql-info-ref : (->* ((U exn:fail:sql Log-Message) Symbol) ((-> Any Any)) Any)
   (lambda [e key [-> values]]
-    (define pinfo (assq key (exn:fail:sql-info e)))
+    (define info : (Listof (Pairof Any Any))
+      (cond [(exn:fail:sql? e) (exn:fail:sql-info e)]
+            [else (let ([detail : Any (msg:log-detail e)])
+                    (if (list? detail) (filter pair? detail) null))]))
+    (define pinfo : (Option (Pairof Any Any)) (assq key info))
     (and pinfo (-> (cdr pinfo)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
