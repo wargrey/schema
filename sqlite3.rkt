@@ -5,12 +5,17 @@
 (require digimon/system)
 
 (require "digitama/db/base.rkt")
-(require "digitama/db/sqlite3.rkt")
 
 (require "digitama/schema.rkt")
+(require "digitama/virtual-sql.rkt")
 (require "digitama/normalize.rkt")
 
+(require/typed db/private/sqlite3/ffi
+               [sqlite3_libversion_number (-> Integer)])
+
 (define-type Pragma-Datum (U Real Boolean Symbol String))
+
+(sqlite3-support-without-rowid? (>= (sqlite3_libversion_number) 3008002))
 
 (define-schema SQLite3-Tables
   (define-table [sqlite-master sqlite-master] #:as Sqlite-Master #:with rowid
@@ -20,7 +25,7 @@
      [rootpage : Natural       #:not-null]
      [sql      : String])))
 
-(define sqlite-pragma : (->* (Connection Symbol) ((U Pragma-Datum Void) #:schema Symbol) (U Simple-Result Rows-Result))
+(define sqlite3-pragma : (->* (Connection Symbol) ((U Pragma-Datum Void) #:schema Symbol) (U Simple-Result Rows-Result))
   ;;; https://www.sqlite.org/pragma.html
   (lambda [sqlite name [argument (void)] #:schema [schema 'main]]
     (define dbms : Symbol (dbsystem-name (connection-dbsystem sqlite)))
@@ -32,8 +37,16 @@
                                             [(symbol? argument) (name->sql argument)]
                                             [else argument])))])))
 
-(define sqlite-table-info : (->* (Connection Symbol) ((Vectorof SQL-Field) #:schema Symbol) Any) ; FIXME: why SQL-Dictionary is unbound?
+(define sqlite3-table-info : (->* (Connection Symbol) ((Vectorof SQL-Field) #:schema Symbol) Any) ; FIXME: why SQL-Dictionary is unbound?
   (lambda [dbc table [value (ann #("cid" "name" "type" "notnull" "dflt_value" "pk") (Vectorof SQL-Field))] #:schema [schema 'main]]
-    (define info : (U Simple-Result Rows-Result) (sqlite-pragma #:schema schema dbc 'table-info table))
+    (define info : (U Simple-Result Rows-Result) (sqlite3-pragma #:schema schema dbc 'table-info table))
     (cond [(simple-result? info) #|should not happen|# (make-immutable-hash)]
           [else (rows->dict info #:key "name" #:value value #:value-mode '(preserve-null))])))
+
+(define sqlite3-version : (-> Connection Integer)
+  (lambda [dbc]
+    #;(define version (query-maybe-value dbc "select sqlite_version();"))
+    #;(for/fold ([V : Integer 0])
+                ([v (in-list (filter-map string->number (regexp-match* #px"\\d+" (~a version))))])
+        (if (exact-integer? v) (+ (* V 1000) v) 0))
+    (sqlite3_libversion_number)))

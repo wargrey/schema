@@ -4,6 +4,8 @@
 
 (require "db/base.rkt")
 
+(define sqlite3-support-without-rowid? : (Parameterof Boolean) (make-parameter #true))
+
 (define-predicate sql-datum? SQL-Datum)
 (define $? : (-> DBSystem String) (λ [dbms] (if (eq? (dbsystem-name dbms) 'postgresql) "$1" "?")))
 
@@ -44,7 +46,8 @@
          [(sqlite3)
           (format "CREATE ~a ~a (~a~a)~a;" (if silent? "TABLE IF NOT EXISTS" "TABLE")
                   table (string-join (map ++++ columns types not-nulls uniques) ", ")
-                  (if (false? racket) "" (format ", ~a BLOB NOT NULL" racket)) (unbox &extra))]
+                  (if (false? racket) "" (format ", ~a BLOB NOT NULL" racket))
+                  (if (sqlite3-support-without-rowid?) (unbox &extra) ""))]
          [else (throw exn:fail:unsupported 'create-table.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
 (define insert-into.sql : (-> Boolean String (Option String) (Listof String) Virtual-Statement)
