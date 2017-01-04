@@ -2,7 +2,7 @@
 
 (provide (all-defined-out))
 
-(require typed/db)
+(require "db/base.rkt")
 (require "virtual-sql.rkt")
 
 (require (for-syntax "normalize.rkt"))

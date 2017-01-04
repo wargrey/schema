@@ -2,7 +2,7 @@
 
 (provide (all-defined-out))
 
-(require typed/db)
+(require "db/base.rkt")
 
 (define-predicate sql-datum? SQL-Datum)
 (define $? : (-> DBSystem String) (λ [dbms] (if (eq? (dbsystem-name dbms) 'postgresql) "$1" "?")))

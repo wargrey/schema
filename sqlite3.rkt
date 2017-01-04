@@ -2,8 +2,10 @@
 
 (provide (all-defined-out))
 
-(require typed/db)
 (require digimon/system)
+
+(require "digitama/db/base.rkt")
+(require "digitama/db/sqlite3.rkt")
 
 (require "digitama/schema.rkt")
 (require "digitama/normalize.rkt")
