@@ -25,6 +25,15 @@
      [rootpage : Natural       #:not-null]
      [sql      : String])))
 
+(define sqlite3-create-database-if-not-exists : (->* (Path-String) () Void)
+  (lambda [db]
+    ; TODO: make the db as a application file format
+    (unless (file-exists? db)
+      (define-values (base name dir?) (split-path db))
+      (cond [(path? base) (make-directory* base)]
+            [else (void '|Do nothing with an immediately relative path or a root directory|)])
+      (call-with-output-file* db void))))
+
 (define sqlite3-pragma : (->* (Connection Symbol) ((U Pragma-Datum Void) #:schema Symbol) (U Simple-Result Rows-Result))
   ;;; https://www.sqlite.org/pragma.html
   (lambda [sqlite name [argument (void)] #:schema [schema 'main]]
