@@ -4,7 +4,7 @@
 
 (require digimon/system)
 
-(require "digitama/db/base.rkt")
+(require typed/db/base)
 
 (require "digitama/schema.rkt")
 (require "digitama/virtual-sql.rkt")

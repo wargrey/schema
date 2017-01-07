@@ -2,7 +2,7 @@
 
 (provide (all-defined-out))
 
-(require "db/base.rkt")
+(require typed/db/base)
 
 (define sqlite3-support-without-rowid? : (Parameterof Boolean) (make-parameter #true))
 

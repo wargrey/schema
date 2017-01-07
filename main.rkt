@@ -1,6 +1,6 @@
 #lang digimon/sugar
 
-(require/provide "digitama/db/base.rkt")
-(require/provide "digitama/db/sqlite3.rkt")
+(require/provide typed/db/base)
+(require/provide typed/db/sqlite3)
 
 (require/provide "digitama/schema.rkt")
