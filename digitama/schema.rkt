@@ -17,31 +17,33 @@
 (struct msg:query msg:log ([rows : (Listof (Vectorof SQL-Datum))]) #:prefab)
 (struct msg:schema msg:log ([occurrences : (U Schema (Listof Schema))] [maniplation : Symbol]) #:prefab)
 
-(define make-schema-message : (-> Struct-TypeTop (U Schema (Listof Schema)) Symbol [#:level Log-Level] [#:error exn] Any * Schema-Message)
-  (lambda [struct:table occurrences maniplation #:level [level #false] #:error [err #false] . messages]
+(define make-schema-message : (-> (U Struct-TypeTop Symbol) (U Schema (Listof Schema)) Symbol
+                                  [#:level Log-Level] [#:error exn] Any * Schema-Message)
+  (lambda [struct:table occurrences maniplation #:level [level #false] #:error [error #false] . messages]
     (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
     (define-values (smart-level smart-brief)
-      (cond [(false? err) (values 'info "")]
-            [else (values 'error (exn-message err))]))
+      (cond [(false? error) (values 'info "")]
+            [else (values 'error (exn-message error))]))
     (msg:schema (or level smart-level)
                 (cond [(null? messages) smart-brief]
                       [else (apply format (~a (car messages)) (cdr messages))])
-                (cond [(false? err) null]
-                      [(exn:schema? err) (info++ err (exn:fail:sql-info err))]
-                      [(exn:fail:sql? err) (exn:fail:sql-info err)]
-                      [else (info++ err (list (cons 'struct (object-name err))))])
-                (value-name struct:table) occurrences maniplation)))
+                (cond [(false? error) null]
+                      [(exn:schema? error) (info++ error (exn:fail:sql-info error))]
+                      [(exn:fail:sql? error) (exn:fail:sql-info error)]
+                      [else (info++ error (list (cons 'struct (object-name error))))])
+                (if (symbol? struct:table) struct:table (value-name struct:table))
+                occurrences maniplation)))
 
 (define make-query-message : (-> Connection Statement Any Symbol SQL-Datum * Log-Message)
   (lambda [dbc sql detail topic . argl]
-    (with-handlers ([exn:schema? exn:schema->message]
-                    [exn? exn->message])
+    (with-handlers ([exn? exn:schema->message])
       (msg:query 'info (~a sql) detail topic
                  (apply query-rows dbc sql argl)))))
 
-(define exn:schema->message : (-> exn:fail:sql Log-Message)
+(define exn:schema->message : (-> exn Log-Message)
   (lambda [e]
-    (exn->message e #:detail (exn:fail:sql-info e))))
+    (cond [(not (exn:fail:sql? e)) (exn->message e)]
+          [else (exn->message e #:detail (exn:fail:sql-info e))])))
 
 (define exn:sql-info-ref : (->* ((U exn:fail:sql Log-Message) Symbol) ((-> Any Any)) Any)
   (lambda [e key [-> values]]
