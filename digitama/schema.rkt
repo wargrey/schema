@@ -13,8 +13,10 @@
 
 (struct schema () #:prefab)
 (struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
+
+(struct msg:query msg:log ([rows : (Listof (Vectorof SQL-Datum))]) #:prefab)
 (struct msg:schema msg:log ([occurrences : (U Schema (Listof Schema))] [maniplation : Symbol]) #:prefab)
-                
+
 (define make-schema-message : (-> Struct-TypeTop (U Schema (Listof Schema)) Symbol [#:level Log-Level] [#:error exn] Any * Schema-Message)
   (lambda [struct:table occurrences maniplation #:level [level #false] #:error [err #false] . messages]
     (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
@@ -29,6 +31,13 @@
                       [(exn:fail:sql? err) (exn:fail:sql-info err)]
                       [else (info++ err (list (cons 'struct (object-name err))))])
                 (value-name struct:table) occurrences maniplation)))
+
+(define make-query-message : (-> Connection Statement Any Symbol SQL-Datum * Log-Message)
+  (lambda [dbc sql detail topic . argl]
+    (with-handlers ([exn:schema? exn:schema->message]
+                    [exn? exn->message])
+      (msg:query 'info (~a sql) detail topic
+                 (apply query-rows dbc sql argl)))))
 
 (define exn:schema->message : (-> exn:fail:sql Log-Message)
   (lambda [e]
