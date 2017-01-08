@@ -46,10 +46,14 @@
           [else (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-print (exn:fail:sql-info e) /dev/stderr))])
                   (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (uuid:random))))])))
 
-(for ([record (in-master :memory:)])
-  (pretty-display record (if (exn? record) /dev/stderr /dev/stdout)))
+(define uuids : (Listof String)
+  (for/list : (Listof String) ([record (in-master :memory:)])
+    (pretty-display record (if (exn? record) /dev/stderr /dev/stdout))
+    (if (exn? record) (uuid:timestamp) (master-uuid record))))
 
 (with-handlers ([exn? (λ [[e : exn]] (make-schema-message struct:sqlite-master null 'create #:error e))])
   (create-sqlite-master :memory:))
+
+(when (pair? uuids) (select-master :memory: #:where (car uuids)))
 
 (disconnect :memory:)

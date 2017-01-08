@@ -85,8 +85,9 @@
     (virtual-statement
      (case which
        [(nowhere) (format "SELECT ~a FROM ~a;" (or racket pk) table)]
+       [(byrowid) (λ [[dbms : DBSystem]] (format ~pk (or racket pk) table pk ($? dbms)))]
        [(ckrowid) (λ [[dbms : DBSystem]] (format ~pk pk table pk ($? dbms)))]
-       [else (λ [[dbms : DBSystem]] (format ~pk (string-join columns ", ") table pk ($? dbms)))]))))
+       [else #|row|# (λ [[dbms : DBSystem]] (format ~pk (string-join columns ", ") table pk ($? dbms)))]))))
 
 (define delete.sql : (-> String String Virtual-Statement)
   (lambda [table pk]

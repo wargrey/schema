@@ -19,18 +19,18 @@
 
 (define make-schema-message : (-> (U Struct-TypeTop Symbol) (U Schema (Listof Schema)) Symbol
                                   [#:level Log-Level] [#:error exn] Any * Schema-Message)
-  (lambda [struct:table occurrences maniplation #:level [level #false] #:error [error #false] . messages]
+  (lambda [struct:table occurrences maniplation #:level [level #false] #:error [errobj #false] . messages]
     (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
     (define-values (smart-level smart-brief)
-      (cond [(false? error) (values 'info "")]
-            [else (values 'error (exn-message error))]))
+      (cond [(false? errobj) (values 'info "")]
+            [else (values 'error (exn-message errobj))]))
     (msg:schema (or level smart-level)
                 (cond [(null? messages) smart-brief]
                       [else (apply format (~a (car messages)) (cdr messages))])
-                (cond [(false? error) null]
-                      [(exn:schema? error) (info++ error (exn:fail:sql-info error))]
-                      [(exn:fail:sql? error) (exn:fail:sql-info error)]
-                      [else (info++ error (list (cons 'struct (object-name error))))])
+                (cond [(false? errobj) null]
+                      [(exn:schema? errobj) (info++ errobj (exn:fail:sql-info errobj))]
+                      [(exn:fail:sql? errobj) (exn:fail:sql-info errobj)]
+                      [else (info++ errobj (list (cons 'struct (object-name errobj))))])
                 (if (symbol? struct:table) struct:table (value-name struct:table))
                 occurrences maniplation)))
 
@@ -40,10 +40,10 @@
       (msg:query 'info (~a sql) detail topic
                  (apply query-rows dbc sql argl)))))
 
-(define exn:schema->message : (-> exn Log-Message)
-  (lambda [e]
-    (cond [(not (exn:fail:sql? e)) (exn->message e)]
-          [else (exn->message e #:detail (exn:fail:sql-info e))])))
+(define exn:schema->message : (-> exn [#:level Log-Level] Log-Message)
+  (lambda [e #:level [level #false]]
+    (cond [(not (exn:fail:sql? e)) (exn->message e #:level (or level 'error))]
+          [else (exn->message e #:detail (exn:fail:sql-info e) #:level (or level 'error))])))
 
 (define exn:sql-info-ref : (->* ((U exn:fail:sql Log-Message) Symbol) ((-> Any Any)) Any)
   (lambda [e key [-> values]]
@@ -172,7 +172,9 @@
                                 (query-exec dbc (hash-ref! table.sql 'delete-table-by-rowid virtual.sql) (table-rowid record)))]))
 
                 (define-syntax (select-table stx) (syntax-case stx [] [(_ argl ___) #'(sequence->list (in-table argl ___))]))
-                (define (in-table [dbc : Connection] #:fetch [size : (U Positive-Integer +inf.0) 1]) : (Sequenceof (U Table exn))
+                (define (in-table [dbc : Connection]
+                                  #:where [where : (U False SQL-Datum) #false]
+                                  #:fetch [size : (U Positive-Integer +inf.0) 1]) : (Sequenceof (U Table exn))
                   (define (virtual.sql [which : Symbol]) : (-> Virtual-Statement)
                     (thunk (simple-select.sql which dbtable rowid racket '(column ...))))
                   (define (read-table sexp) : (U Table exn)
@@ -187,7 +189,10 @@
                             [else (throw [exn:schema 'assertion `((struct . table) (record . ,pk) (got . ,record))]
                                          'select-table "the view record is malformed")])))
                   (define-values (key fmap) (if (and racket) (values 'select-racket read-table) (values 'select-rowid read-by-pk)))
-                  (sequence-map fmap (in-query dbc #:fetch size (hash-ref table.sql key (virtual.sql 'nowhere)))))
+                  (define raw : (Sequenceof SQL-Datum)
+                    (cond [(false? where) (in-query dbc #:fetch size (hash-ref table.sql key (virtual.sql 'nowhere)))]
+                          [else (in-query dbc #:fetch size (hash-ref table.sql 'select-where-rowid (virtual.sql 'byrowid)) where)]))
+                  (sequence-map fmap raw))
 
                 (define (update-table [dbc : Connection] [records : (U Table (Listof Table))]
                                       #:check-first? [check? : Boolean #true]) : Void
