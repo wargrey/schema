@@ -23,14 +23,10 @@
       (msg:query 'info (~a sql) detail topic
                  (apply query-rows dbc sql argl)))))
 
-(define make-schema-error-message : (-> Symbol Symbol (Option exn) Any * Schema-Message)
-  ;;; NOTE
-  ; This is intend to produce an error message, however, a query result in zero rows may not implies an error,
-  ; furthermore clients may not want to make a concrete schema message (which may need another dispatching)
-  ; when zero rows ocurr since the topic of this message already indicate the source.
-  (lambda [table maniplation errobj . messages]
-    (define-values (level message info) (schema-message-smart-info errobj messages))
-    (msg:schema level message info table maniplation)))
+(define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol (U SQL-Datum exn) Any * Schema-Message)
+  (lambda [table maniplation urgent . messages]
+    (define-values (level message info) (schema-message-smart-info urgent messages))
+    (msg:schema level message info (if (symbol? table) table (value-name table)) maniplation)))
 
 (define exn:schema->message : (-> exn [#:level Log-Level] Log-Message)
   (lambda [e #:level [level #false]]
@@ -231,16 +227,16 @@
               (define-table id #:as ID rest ...) ...)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define schema-message-smart-info : (-> (Option exn) (Listof Any) (Values Log-Level String (Listof (Pairof Symbol Any))))
-  (lambda [errobj messages]
+(define schema-message-smart-info : (-> (U SQL-Datum exn) (Listof Any) (Values Log-Level String Any))
+  (lambda [urgent messages]
     (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
     (define-values (smart-level smart-brief)
-      (cond [(exn? errobj) (values 'error (exn-message errobj))]
+      (cond [(exn? urgent) (values 'error (exn-message urgent))]
             [else (values 'info "")]))
     (values smart-level
             (cond [(null? messages) smart-brief]
                   [else (apply format (~a (car messages)) (cdr messages))])
-            (cond [(false? errobj) null]
-                  [(exn:schema? errobj) (info++ errobj (exn:fail:sql-info errobj))]
-                  [(exn:fail:sql? errobj) (exn:fail:sql-info errobj)]
-                  [else (info++ errobj (list (cons 'struct (object-name errobj))))]))))
+            (cond [(not (exn? urgent)) urgent]
+                  [(exn:schema? urgent) (info++ urgent (exn:fail:sql-info urgent))]
+                  [(exn:fail:sql? urgent) (exn:fail:sql-info urgent)]
+                  [else (info++ urgent (list (cons 'struct (object-name urgent))))]))))
