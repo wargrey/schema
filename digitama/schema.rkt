@@ -1,6 +1,6 @@
 #lang digimon
 
-(provide (except-out (all-defined-out) schema-smart-message))
+(provide (except-out (all-defined-out) schema-message-smart-info))
 
 (require typed/db/base)
 
@@ -23,14 +23,14 @@
       (msg:query 'info (~a sql) detail topic
                  (apply query-rows dbc sql argl)))))
 
-(define make-schema-error-message : (-> (U Struct-TypeTop Symbol) Symbol (U exn Null) [#:level Log-Level] Any * Schema-Message)
+(define make-schema-error-message : (-> Symbol Symbol (Option exn) Any * Schema-Message)
   ;;; NOTE
   ; This is intend to produce an error message, however, a query result in zero rows may not implies an error,
   ; furthermore clients may not want to make a concrete schema message (which may need another dispatching)
   ; when zero rows ocurr since the topic of this message already indicate the source.
-  (lambda [table maniplation errobj #:level [level #false] . messages]
-    (define-values (msg-level message info) (schema-smart-message level (and (exn? errobj) errobj) messages))
-    (msg:schema msg-level message info (if (symbol? table) table (value-name table)) maniplation)))
+  (lambda [table maniplation errobj . messages]
+    (define-values (level message info) (schema-message-smart-info errobj messages))
+    (msg:schema level message info table maniplation)))
 
 (define exn:schema->message : (-> exn [#:level Log-Level] Log-Message)
   (lambda [e #:level [level #false]]
@@ -141,13 +141,22 @@
                     (check-fields 'remake-table field ...)
                     (unsafe-table field ...)))
 
-                (define make-table-message : (-> Symbol (U Table (Listof Table) exn) [#:level Log-Level] Any * Schema-Message)
-                  (lambda [maniplation occurrences #:level [level #false] . messages]
-                    (if (exn? occurrences)
-                        (let-values ([(msg-level message info) (schema-smart-message level occurrences messages)])
-                          (msg:schema msg-level message info 'table maniplation))
-                        (let-values ([(msg-level message info) (schema-smart-message level #false messages)])
-                          (msg:schema:table msg-level message info 'table maniplation occurrences)))))
+                (define make-table-message : (case-> [Symbol -> (-> (U Table (Listof Table) exn) Any * Schema-Message)]
+                                                     [Symbol (U Table (Listof Table) exn) Any * -> Schema-Message])
+                  (case-lambda
+                    [(maniplation)
+                     (λ [occurrences . messages]
+                       (if (exn? occurrences)
+                           (let-values ([(level message info) (schema-message-smart-info occurrences messages)])
+                             (msg:schema level message info 'table maniplation))
+                           (let-values ([(level message info) (schema-message-smart-info #false messages)])
+                             (msg:schema:table level message info 'table maniplation occurrences))))]
+                    [(maniplation occurrences . messages)
+                     (if (exn? occurrences)
+                         (let-values ([(level message info) (schema-message-smart-info occurrences messages)])
+                           (msg:schema level message info 'table maniplation))
+                         (let-values ([(level message info) (schema-message-smart-info #false messages)])
+                           (msg:schema:table level message info 'table maniplation occurrences)))]))
                 
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
                   (when (false? table-rowid) (throw exn:fail:unsupported 'create-table "cannot create a temporary view"))
@@ -222,13 +231,13 @@
               (define-table id #:as ID rest ...) ...)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define schema-smart-message : (-> (Option Log-Level) (Option exn) (Listof Any) (Values Log-Level String (Listof (Pairof Symbol Any))))
-  (lambda [level errobj messages]
+(define schema-message-smart-info : (-> (Option exn) (Listof Any) (Values Log-Level String (Listof (Pairof Symbol Any))))
+  (lambda [errobj messages]
     (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
     (define-values (smart-level smart-brief)
-      (cond [(false? errobj) (values 'info "")]
-            [else (values 'error (exn-message errobj))]))
-    (values (or level smart-level)
+      (cond [(exn? errobj) (values 'error (exn-message errobj))]
+            [else (values 'info "")]))
+    (values smart-level
             (cond [(null? messages) smart-brief]
                   [else (apply format (~a (car messages)) (cdr messages))])
             (cond [(false? errobj) null]

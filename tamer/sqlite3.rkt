@@ -51,7 +51,7 @@
     (pretty-display record (if (exn? record) /dev/stderr /dev/stdout))
     (if (exn? record) (uuid:timestamp) (master-uuid record))))
 
-(with-handlers ([exn? (λ [[e : exn]] (make-schema-error-message struct:sqlite-master 'create e))])
+(with-handlers ([exn? (λ [[e : exn]] (make-schema-error-message 'sqlite-master 'create e))])
   (create-sqlite-master :memory:))
 
 (when (pair? uuids) (select-master :memory: #:where (car uuids)))
