@@ -1,6 +1,6 @@
 #lang digimon
 
-(provide (all-defined-out))
+(provide (except-out (all-defined-out) schema-smart-message))
 
 (require typed/db/base)
 
@@ -15,30 +15,22 @@
 (struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
 
 (struct msg:query msg:log ([rows : (Listof (Vectorof SQL-Datum))]) #:prefab)
-(struct msg:schema msg:log ([occurrences : (U Schema (Listof Schema))] [maniplation : Symbol]) #:prefab)
-
-(define make-schema-message : (-> (U Struct-TypeTop Symbol) (U Schema (Listof Schema)) Symbol
-                                  [#:level Log-Level] [#:error exn] Any * Schema-Message)
-  (lambda [struct:table occurrences maniplation #:level [level #false] #:error [errobj #false] . messages]
-    (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
-    (define-values (smart-level smart-brief)
-      (cond [(false? errobj) (values 'info "")]
-            [else (values 'error (exn-message errobj))]))
-    (msg:schema (or level smart-level)
-                (cond [(null? messages) smart-brief]
-                      [else (apply format (~a (car messages)) (cdr messages))])
-                (cond [(false? errobj) null]
-                      [(exn:schema? errobj) (info++ errobj (exn:fail:sql-info errobj))]
-                      [(exn:fail:sql? errobj) (exn:fail:sql-info errobj)]
-                      [else (info++ errobj (list (cons 'struct (object-name errobj))))])
-                (if (symbol? struct:table) struct:table (value-name struct:table))
-                occurrences maniplation)))
+(struct msg:schema msg:log ([maniplation : Symbol]) #:prefab)
 
 (define make-query-message : (-> Connection Statement Any Symbol SQL-Datum * Log-Message)
   (lambda [dbc sql detail topic . argl]
     (with-handlers ([exn? exn:schema->message])
       (msg:query 'info (~a sql) detail topic
                  (apply query-rows dbc sql argl)))))
+
+(define make-schema-error-message : (-> (U Struct-TypeTop Symbol) Symbol (U exn Null) [#:level Log-Level] Any * Schema-Message)
+  ;;; NOTE
+  ; This is intend to produce an error message, however, a query result in zero rows may not implies an error,
+  ; furthermore clients may not want to make a concrete schema message (which may need another dispatching)
+  ; when zero rows ocurr since the topic of this message already indicate the source.
+  (lambda [table maniplation errobj #:level [level #false] . messages]
+    (define-values (msg-level message info) (schema-smart-message level (and (exn? errobj) errobj) messages))
+    (msg:schema msg-level message info (if (symbol? table) table (value-name table)) maniplation)))
 
 (define exn:schema->message : (-> exn [#:level Log-Level] Log-Message)
   (lambda [e #:level [level #false]]
@@ -95,7 +87,7 @@
                     [racket (if (attribute index-only) (id->sql #'index-only) #'#false)]
                     [([(table-rowid RowidType) (:field table-field field-contract FieldType on-update [defval ...]) ...]
                       [(column-id column table-column ColumnType DBType column-guard column-not-null column-unique) ...]
-                      [table? table-row?] [check-fields table.sql]
+                      [check-fields table.sql] [table? table-row? msg:schema:table make-table-message]
                       [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
                      (let ([tablename (syntax-e #'table)]
                            [pkname (syntax-e #'primary-key)]
@@ -107,8 +99,9 @@
                            (cond [(void? column-info) (values (cons field-info sdleif) snmuloc rowid-info)]
                                  [else (values (cons field-info sdleif) (cons column-info snmuloc) (or rowid-info pk-info))])))
                        (list (cons (or rowid-info (list #'#false #'Any)) (reverse sdleif)) (reverse snmuloc)
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?"))]) (format-id #'table fmt tablename))
                              (for/list ([idx (in-range 2)]) (datum->syntax #'table (gensym tablename)))
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "msg:schema:~a" "make-~a-message"))])
+                               (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'in 'select 'update))])
                                (format-id #'table "~a-~a" prefix tablename))))]
                     [([mkargs ...] [reargs ...])
@@ -120,6 +113,7 @@
                              (cons :fld (cons rearg (cadr syns)))))])
        #'(begin (define-type Table table)
                 (struct table schema ([field : FieldType] ...) #:prefab #:constructor-name unsafe-table)
+                (struct msg:schema:table msg:schema ([occurrences : (U Table (Listof Table))]) #:prefab)
                 (define-predicate table-row? (List FieldType ...))
                 (define table.sql : (HashTable Symbol Statement) (make-hasheq))
                 
@@ -147,6 +141,14 @@
                     (check-fields 'remake-table field ...)
                     (unsafe-table field ...)))
 
+                (define make-table-message : (-> Symbol (U Table (Listof Table) exn) [#:level Log-Level] Any * Schema-Message)
+                  (lambda [maniplation occurrences #:level [level #false] . messages]
+                    (if (exn? occurrences)
+                        (let-values ([(msg-level message info) (schema-smart-message level occurrences messages)])
+                          (msg:schema msg-level message info 'table maniplation))
+                        (let-values ([(msg-level message info) (schema-smart-message level #false messages)])
+                          (msg:schema:table msg-level message info 'table maniplation occurrences)))))
+                
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
                   (when (false? table-rowid) (throw exn:fail:unsupported 'create-table "cannot create a temporary view"))
                   (define (virtual.sql) : Virtual-Statement
@@ -218,3 +220,18 @@
     [(_ Table-Datum (define-table id #:as ID rest ...) ...)
      #'(begin (define-type Table-Datum (U ID ...))
               (define-table id #:as ID rest ...) ...)]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define schema-smart-message : (-> (Option Log-Level) (Option exn) (Listof Any) (Values Log-Level String (Listof (Pairof Symbol Any))))
+  (lambda [level errobj messages]
+    (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
+    (define-values (smart-level smart-brief)
+      (cond [(false? errobj) (values 'info "")]
+            [else (values 'error (exn-message errobj))]))
+    (values (or level smart-level)
+            (cond [(null? messages) smart-brief]
+                  [else (apply format (~a (car messages)) (cdr messages))])
+            (cond [(false? errobj) null]
+                  [(exn:schema? errobj) (info++ errobj (exn:fail:sql-info errobj))]
+                  [(exn:fail:sql? errobj) (exn:fail:sql-info errobj)]
+                  [else (info++ errobj (list (cons 'struct (object-name errobj))))]))))
