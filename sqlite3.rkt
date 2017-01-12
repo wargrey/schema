@@ -46,7 +46,7 @@
                                             [(symbol? argument) (name->sql argument)]
                                             [else argument])))])))
 
-(define sqlite3-table-info : (->* (Connection Symbol) ((Vectorof SQL-Field) #:schema Symbol) Any) ; FIXME: why SQL-Dictionary is unbound?
+(define sqlite3-table-info : (->* (Connection Symbol) ((Vectorof SQL-Field) #:schema Symbol) SQL-Dictionary)
   (lambda [dbc table [value (ann #("cid" "name" "type" "notnull" "dflt_value" "pk") (Vectorof SQL-Field))] #:schema [schema 'main]]
     (define info : (U Simple-Result Rows-Result) (sqlite3-pragma #:schema schema dbc 'table-info table))
     (cond [(simple-result? info) #|should not happen|# (make-immutable-hash)]
