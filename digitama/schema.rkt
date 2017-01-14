@@ -186,7 +186,7 @@
                     (thunk (simple-select.sql which dbtable rowid racket '(column ...))))
                   (define (read-table sexp) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
-                      (read/assert sexp table?)))
+                      (read:+? sexp table?)))
                   (define (read-by-pk [pk : SQL-Datum]) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
                       (define record : (Listof SQL-Datum)
