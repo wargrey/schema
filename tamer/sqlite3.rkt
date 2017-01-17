@@ -57,3 +57,8 @@
 (when (pair? uuids) (select-master :memory: #:where (car uuids)))
 
 (disconnect :memory:)
+
+(define src : Master (remake-master #false #:name "remake" #:tbl-name "tbl:test"))
+(with-handlers ([exn? (λ [e] e)]) (remake-master #false))
+(values src (remake-master src #:tbl-name "tbl:okay"))
+

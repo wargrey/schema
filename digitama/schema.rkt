@@ -132,11 +132,16 @@
                   (when (not unsafe?) (check-fields 'make-table field ...))
                   (unsafe-table field ...))
 
-                (define (remake-table [record : Table] reargs ...) : Table
-                  (let ([field : FieldType (if (void? field) (table-field record) field)] ...)
+                (define (remake-table [record : (Option Table)] reargs ...) : Table
+                  (let ([field : FieldType (cond [(not (void? field)) field]
+                                                 [(table? record) (table-field record)]
+                                                 [else (let ([?dv (list defval ...)])
+                                                         (cond [(pair? ?dv) (car ?dv)]
+                                                               [else (error 'remake-table "missing value for field '~a'"
+                                                                            'field)]))])] ...)
                     (check-fields 'remake-table field ...)
                     (unsafe-table field ...)))
-
+                
                 (define make-table-message : (case-> [Symbol -> (-> (U Table (Listof Table) exn) Any * Schema-Message)]
                                                      [Symbol (U Table (Listof Table) exn) Any * -> Schema-Message])
                   (case-lambda
