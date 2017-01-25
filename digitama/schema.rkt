@@ -61,9 +61,9 @@
        (define-values (primary-field? not-null?) (values (eq? (syntax-e #'field) rowid) (attribute not-null)))
        (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
        (values (and primary-field? (list table-field DataType))
-               (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field)))) table-field
-                     (if (attribute contract) #'contract #'#true)
-                     (if (or primary-field? (attribute not-null)) DataType #`(Option #,(syntax-e DataType)))
+               (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
+                     table-field (if (attribute contract) #'contract #'#true)
+                     DataType (if (or primary-field? (attribute not-null)) DataType #|DataType may not builtin|# #'False)
                      (if (attribute generate) #'generate #'(void))
                      (cond [(attribute defval) #'(defval)]
                            [(attribute generate) #'(generate)]
@@ -71,7 +71,7 @@
                            [else #'(#false)]))
                (unless (and racket? (attribute hide))
                  (list #'field (id->sql #'field)
-                       table-field DataType SQLType
+                       table-field SQLType
                        (or (attribute guard) #'racket->sql)
                        (and not-null? #'#true)
                        (and (attribute unique) #'#true))))]))
@@ -81,8 +81,8 @@
      (with-syntax* ([(rowid ___) (list (id->sql #'primary-key) (format-id #'id "..."))]
                     [(table dbtable) (syntax-parse #'tbl [r:id (list #'r (id->sql #'r))] [(r db) (list #'r (id->sql #'db))])]
                     [racket (if (attribute index-only) (id->sql #'index-only) #'#false)]
-                    [([(table-rowid RowidType) (:field table-field field-contract FieldType on-update [defval ...]) ...]
-                      [(column-id column table-column ColumnType DBType column-guard column-not-null column-unique) ...]
+                    [([(table-rowid RowidType) (:field table-field field-contract FieldType MaybeNull on-update [defval ...]) ...]
+                      [(column-id column table-column DBType column-guard column-not-null column-unique) ...]
                       [check-fields table.sql] [table? table-row? msg:schema:table make-table-message]
                       [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
                      (let ([tablename (syntax-e #'table)]
@@ -103,14 +103,14 @@
                     [([mkargs ...] [reargs ...])
                      (for/fold ([syns (list null null)])
                                ([:fld (in-syntax #'(:field ...))]
-                                [mkarg (in-syntax #'([field : FieldType defval ...] ...))]
-                                [rearg (in-syntax #'([field : (U FieldType Void) on-update] ...))])
+                                [mkarg (in-syntax #'([field : (U FieldType MaybeNull) defval ...] ...))]
+                                [rearg (in-syntax #'([field : (U FieldType MaybeNull Void) on-update] ...))])
                        (list (cons :fld (cons mkarg (car syns)))
                              (cons :fld (cons rearg (cadr syns)))))])
        #'(begin (define-type Table table)
-                (struct table schema ([field : FieldType] ...) #:prefab #:constructor-name unsafe-table)
+                (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
                 (struct msg:schema:table msg:schema ([occurrences : (U Table (Listof Table))]) #:prefab)
-                (define-predicate table-row? (List FieldType ...))
+                (define-predicate table-row? (List (U FieldType MaybeNull) ...))
                 (define table.sql : (HashTable Symbol Statement) (make-hasheq))
                 
                 (define-syntax (check-fields stx)
@@ -133,12 +133,12 @@
                   (unsafe-table field ...))
 
                 (define (remake-table [record : (Option Table)] reargs ...) : Table
-                  (let ([field : FieldType (cond [(not (void? field)) field]
-                                                 [(table? record) (table-field record)]
-                                                 [else (let ([?dv (list defval ...)])
-                                                         (cond [(pair? ?dv) (car ?dv)]
-                                                               [else (error 'remake-table "missing value for field '~a'"
-                                                                            'field)]))])] ...)
+                  (let ([field : (U FieldType MaybeNull) (cond [(not (void? field)) field]
+                                                               [(table? record) (table-field record)]
+                                                               [else (let ([?dv (list defval ...)])
+                                                                       (cond [(pair? ?dv) (car ?dv)]
+                                                                             [else (error 'remake-table "missing value for field '~a'"
+                                                                                          'field)]))])] ...)
                     (check-fields 'remake-table field ...)
                     (unsafe-table field ...)))
                 
