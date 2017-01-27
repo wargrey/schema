@@ -68,7 +68,9 @@
                      (cond [(attribute defval) #'(defval)]
                            [(attribute generate) #'(generate)]
                            [(or primary-field? not-null?) #'()]
-                           [else #'(#false)]))
+                           [else (syntax-case DataType [Listof]
+                                   [(Listof _) #'(null)]
+                                   [_ #'(#false)])]))
                (unless (and racket? (attribute hide))
                  (list #'field (id->sql #'field)
                        table-field SQLType

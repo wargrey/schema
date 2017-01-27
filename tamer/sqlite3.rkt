@@ -25,7 +25,7 @@
 (sqlite3-table-info :memory: 'master #("type" "notnull" "pk"))
 (select-sqlite-master :memory:)
 
-(with-handlers ([exn:schema? (λ [[e : exn:schema]] (pretty-display (exn:fail:sql-info e) /dev/stderr))])
+(with-handlers ([exn:schema? (λ [[e : exn:schema]] (pretty-display (exn:fail:sql-info e) /dev/stdout))])
   (make-master #:name "failure" #:tbl-name "BOOM~~~"))
 
 (define masters : (Listof Master)
@@ -35,7 +35,7 @@
                  #:tbl-name (symbol->string (gensym 'tbl:))
                  #:rootpage (assert i index?))))
 
-(with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-print (exn:fail:sql-info e) /dev/stderr))])
+(with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-print (exn:fail:sql-info e) /dev/stdout))])
   (insert-master :memory: masters)
   (insert-master :memory: masters))
 
@@ -43,7 +43,7 @@
   (when (master? record)
     (cond [(< idx plan) (delete-master :memory: record)]
           [(< idx (+ plan 2)) (update-master :memory: (remake-master record))]
-          [else (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-print (exn:fail:sql-info e) /dev/stderr))])
+          [else (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-print (exn:fail:sql-info e) /dev/stdout))])
                   (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (uuid:random))))])))
 
 (define uuids : (Listof String)
