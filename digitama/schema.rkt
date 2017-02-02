@@ -143,9 +143,8 @@
                                (cond [(not (void? field)) field]
                                      [(table? self) (table-field self)]
                                      [else (let ([?dv (list defval ...)])
-                                             (cond [(pair? ?dv) (car ?dv)]
-                                                   [else (error 'remake-table "missing value for field '~a'"
-                                                                'field)]))])] ...)
+                                             (when (null? ?dv) (error 'remake-table "missing value for field '~a'" 'field))
+                                             (car ?dv))])] ...)
                     (check-fields 'remake-table field ...)
                     (unsafe-table field ...)))
 
@@ -153,16 +152,16 @@
                   (make-immutable-hasheq (list (cons 'field (table-field self)) ...)))
 
                 (define (hash->table [src : HashTableTop] #:unsafe? [unsafe? : Boolean #false]) : Table
-                  (define field : (U FieldType MaybeNull)
-                    (let ([raw : Any (hash-ref src 'field void)])
-                      (cond [(not (void? raw)) (cast raw (U FieldType MaybeNull))]
-                            [else (let ([?dv (list defval ...)])
-                                    (cond [(pair? ?dv) (car ?dv)]
-                                          [else (error 'hash->table "missing value for field '~a'"
-                                                       'field)]))])))
-                  ...
-                  (when (not unsafe?) (check-fields 'hash->table field ...))
-                  (unsafe-table field ...))
+                  (define record : (Listof Any)
+                    (list (hash-ref src 'field
+                                    (thunk (let ([?dv (list defval ...)])
+                                             (when (null? ?dv) (error 'hash->table "missing value for field '~a'" 'field))
+                                             (car ?dv)))) ...))
+                  (cond [(not (table-row? record)) (error 'hash->table "mismatched source")]
+                        [(and unsafe?) (apply unsafe-table record)]
+                        [else (match-let ([(list field ...) record])
+                                (check-fields 'hash->table field ...)
+                                (unsafe-table field ...))]))
                 
                 (define make-table-message : (case-> [Symbol -> (-> (U Table (Listof Table) exn) Any * Schema-Message)]
                                                      [Symbol (U Table (Listof Table) exn) Any * -> Schema-Message])
@@ -221,7 +220,7 @@
                           (if (sql-null? row) #false row)))
                       (cond [(table-row? record) (apply unsafe-table record)]
                             [else (throw [exn:schema 'assertion `((struct . table) (record . ,pk) (got . ,record))]
-                                         'select-table "the view record is malformed")])))
+                                         'select-table "maybe the database is penetrated")])))
                   (define-values (key fmap) (if (and racket) (values 'select-racket read-table) (values 'select-rowid read-by-pk)))
                   (define raw : (Sequenceof SQL-Datum)
                     (cond [(false? where) (in-query dbc #:fetch size (hash-ref table.sql key (virtual.sql 'nowhere)))]
