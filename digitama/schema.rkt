@@ -80,14 +80,14 @@
   (syntax-parse stx #:datum-literals [:]
     [(_ tbl #:as Table #:with primary-key (~optional index-only) ([field : DataType constraints ...] ...)
         (~or (~optional (~seq #:check record-contract:expr) #:name "#:check" #:defaults ([record-contract #'#true]))
-             (~optional (~seq #:serialize ->blob) #:name "#:serialize")
-             (~optional (~seq #:deserialize blob->) #:name "#:deserialize")) ...)
+             (~optional (~seq #:serialize serialize) #:name "#:serialize")
+             (~optional (~seq #:deserialize deserialize) #:name "#:deserialize")) ...)
      (with-syntax* ([(rowid ___) (list (id->sql #'primary-key) (format-id #'id "..."))]
                     [(table dbtable) (syntax-parse #'tbl [r:id (list #'r (id->sql #'r))] [(r db) (list #'r (id->sql #'db))])]
                     [racket (if (attribute index-only) (id->sql #'index-only) #'#false)]
                     [([(table-rowid RowidType) (:field table-field field-contract FieldType MaybeNull on-update [defval ...]) ...]
                       [(column-id column table-column DBType column-guard column-not-null column-unique) ...]
-                      [check-fields table.sql] [table? table-row? msg:schema:table make-table-message]
+                      [check-fields table.sql] [table? table-row? msg:schema:table make-table-message table->hash hash->table]
                       [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
                      (let ([tablename (syntax-e #'table)]
                            [pkname (syntax-e #'primary-key)]
@@ -100,7 +100,7 @@
                                  [else (values (cons field-info sdleif) (cons column-info snmuloc) (or rowid-info pk-info))])))
                        (list (cons (or rowid-info (list #'#false #'Any)) (reverse sdleif)) (reverse snmuloc)
                              (for/list ([idx (in-range 2)]) (datum->syntax #'table (gensym tablename)))
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "msg:schema:~a" "make-~a-message"))])
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "msg:schema:~a" "make-~a-message" "~a->hash" "hash->~a"))])
                                (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'in 'select 'update))])
                                (format-id #'table "~a-~a" prefix tablename))))]
@@ -111,8 +111,8 @@
                                 [rearg (in-syntax #'([field : (U FieldType MaybeNull Void) on-update] ...))])
                        (list (cons :fld (cons mkarg (car syns)))
                              (cons :fld (cons rearg (cadr syns)))))]
-                    [serialize (or (attribute ->blob) #'(λ [[raw : Table]] : SQL-Datum (call-with-output-bytes (λ [db] (write raw db)))))]
-                    [deserialize (or (attribute blob->) #'(λ [[raw : SQL-Datum]] : Table (read:+? raw table?)))])
+                    [serialize (or (attribute serialize) #'(λ [[raw : Table]] : SQL-Datum (~a (table->hash raw))))]
+                    [deserialize (or (attribute deserialize) #'(λ [[raw : SQL-Datum]] : Table (hash->table (read:+? raw hash?))))])
        #'(begin (define-type Table table)
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
                 (struct msg:schema:table msg:schema ([occurrences : (U Table (Listof Table))]) #:prefab)
@@ -138,15 +138,33 @@
                   (when (not unsafe?) (check-fields 'make-table field ...))
                   (unsafe-table field ...))
 
-                (define (remake-table [record : (Option Table)] reargs ...) : Table
-                  (let ([field : (U FieldType MaybeNull) (cond [(not (void? field)) field]
-                                                               [(table? record) (table-field record)]
-                                                               [else (let ([?dv (list defval ...)])
-                                                                       (cond [(pair? ?dv) (car ?dv)]
-                                                                             [else (error 'remake-table "missing value for field '~a'"
-                                                                                          'field)]))])] ...)
+                (define (remake-table [self : (Option Table)] reargs ...) : Table
+                  (let ([field : (U FieldType MaybeNull)
+                               (cond [(not (void? field)) field]
+                                     [(table? self) (table-field self)]
+                                     [else (let ([?dv (list defval ...)])
+                                             (cond [(pair? ?dv) (car ?dv)]
+                                                   [else (error 'remake-table "missing value for field '~a'"
+                                                                'field)]))])] ...)
                     (check-fields 'remake-table field ...)
                     (unsafe-table field ...)))
+
+                (define (table->hash [self : Table]) : (HashTable Symbol Any)
+                  (for/hasheq : (HashTable Symbol Any) ([key (in-list '(field ...))]
+                                                        [val-ref (in-list (list table-field ...))])
+                    (values key (val-ref self))))
+
+                (define (hash->table [src : HashTableTop] #:unsafe? [unsafe? : Boolean #false]) : Table
+                  (define field : (U FieldType MaybeNull)
+                    (let ([raw : Any (hash-ref src 'field void)])
+                      (cond [(not (void? raw)) (cast raw (U FieldType MaybeNull))]
+                            [else (let ([?dv (list defval ...)])
+                                    (cond [(pair? ?dv) (car ?dv)]
+                                          [else (error 'hash->table "missing value for field '~a'"
+                                                       'field)]))])))
+                  ...
+                  (when (not unsafe?) (check-fields 'hash->table field ...))
+                  (unsafe-table field ...))
                 
                 (define make-table-message : (case-> [Symbol -> (-> (U Table (Listof Table) exn) Any * Schema-Message)]
                                                      [Symbol (U Table (Listof Table) exn) Any * -> Schema-Message])
@@ -172,22 +190,22 @@
                                       '(column-not-null ...) '(column-unique ...)))
                   (query-exec dbc (hash-ref! table.sql (if silent? 'create-if-not-exists 'create) virtual.sql)))
 
-                (define (insert-table [dbc : Connection] [records : (U Table (Listof Table))]
+                (define (insert-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:or-replace? [replace? : Boolean #false]) : Void
                   (define (virtual.sql) : Virtual-Statement (insert-into.sql replace? dbtable racket '(column ...)))
                   (when (false? table-rowid) (throw exn:fail:unsupported 'insert-table "cannot insert records into a temporary view"))
                   (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
                   (define insert.sql : Statement (hash-ref! table.sql (if replace? 'replace 'insert) virtual.sql))
-                  (for ([row (if (list? records) (in-list records) (in-value records))])
+                  (for ([row (if (list? selves) (in-list selves) (in-value selves))])
                     (define column-id : SQL-Datum (column-guard 'column-id (table-column row) dbsys)) ...
                     (cond [(false? racket) (query-exec dbc insert.sql column-id ...)]
                           [else (query-exec dbc insert.sql column-id ... (serialize row))])))
        
-                (define (delete-table [dbc : Connection] [records : (U Table (Listof Table))]) : Void
+                (define (delete-table [dbc : Connection] [selves : (U Table (Listof Table))]) : Void
                   (define (virtual.sql) : Virtual-Statement (delete.sql dbtable rowid))
                   (cond [(false? table-rowid) (throw exn:fail:unsupported 'delete-table "cannot delete records from a temporary view")]
-                        [else (for ([record (if (list? records) (in-list records) (in-value records))])
-                                (query-exec dbc (hash-ref! table.sql 'delete-table-by-rowid virtual.sql) (table-rowid record)))]))
+                        [else (for ([self (if (list? selves) (in-list selves) (in-value selves))])
+                                (query-exec dbc (hash-ref! table.sql 'delete-table-by-rowid virtual.sql) (table-rowid self)))]))
 
                 (define-syntax (select-table stx) (syntax-case stx [] [(_ argl ___) #'(sequence->list (in-table argl ___))]))
                 (define (in-table [dbc : Connection]
@@ -212,7 +230,7 @@
                           [else (in-query dbc #:fetch size (hash-ref table.sql 'select-where-rowid (virtual.sql 'byrowid)) where)]))
                   (sequence-map fmap raw))
 
-                (define (update-table [dbc : Connection] [records : (U Table (Listof Table))]
+                (define (update-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:check-first? [check? : Boolean #true]) : Void
                   (define (virtual.sql [ensure? : Boolean]) : (-> Virtual-Statement)
                     (thunk (cond [(not ensure?) (update.sql dbtable rowid racket '(column ...))]
@@ -221,14 +239,14 @@
                         [else (let ([dbsys (dbsystem-name (connection-dbsystem dbc))])
                                 (define update.sql : Statement (hash-ref! table.sql 'update (virtual.sql #false)))
                                 (define check.sql : Statement (hash-ref! table.sql 'check-rowid (virtual.sql #true)))
-                                (for ([record (if (list? records) (in-list records) (in-value records))])
-                                  (define pk : RowidType (table-rowid record))
+                                (for ([self (if (list? selves) (in-list selves) (in-value selves))])
+                                  (define pk : RowidType (table-rowid self))
                                   (when (and check? (false? (query-maybe-value dbc check.sql pk)))
                                     (throw [exn:schema 'norow `((struct . table) (record . ,pk))]
                                            'update "no such record found in the table"))
-                                  (define column-id : SQL-Datum (column-guard 'column-id (table-column record) dbsys)) ...
+                                  (define column-id : SQL-Datum (column-guard 'column-id (table-column self) dbsys)) ...
                                   (cond [(false? racket) (query dbc update.sql column-id ... pk)]
-                                        [else (query dbc update.sql column-id ... (serialize record) pk)])))]))))]))
+                                        [else (query dbc update.sql column-id ... (serialize self) pk)])))]))))]))
 
 (define-syntax (define-schema stx)
   (syntax-parse stx

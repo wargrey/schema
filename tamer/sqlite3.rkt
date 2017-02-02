@@ -17,8 +17,8 @@
      [rootpage : Natural       #:default (random 32)]
      [ctime    : Fixnum        #:default (current-milliseconds)]
      [mtime    : Fixnum        #:auto (current-milliseconds)])
-    #:serialize (λ [[raw : Master]] (call-with-output-string (λ [db] (write raw db))))
-    #:deserialize (λ [[raw : SQL-Datum]] : Master (read:+? raw master?))))
+    #:serialize (λ [[raw : Master]] (~s (master->hash raw)))
+    #:deserialize (λ [[raw : SQL-Datum]] : Master (hash->master (read:+? raw hash?) #:unsafe? #true))))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 (sqlite3-version :memory:)
@@ -61,6 +61,6 @@
 (disconnect :memory:)
 
 (define src : Master (remake-master #false #:name "remake" #:tbl-name "tbl:test"))
+(values src (remake-master src #:tbl-name "tbl:okay") (master->hash src))
 (with-handlers ([exn? (λ [e] e)]) (remake-master #false))
-(values src (remake-master src #:tbl-name "tbl:okay"))
-
+(with-handlers ([exn? (λ [e] e)]) (hash->master (make-hasheq)))
