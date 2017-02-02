@@ -16,7 +16,9 @@
      [tbl-name : String        #:not-null #:check (string-prefix? tbl-name "tbl")]
      [rootpage : Natural       #:default (random 32)]
      [ctime    : Fixnum        #:default (current-milliseconds)]
-     [mtime    : Fixnum        #:auto (current-milliseconds)])))
+     [mtime    : Fixnum        #:auto (current-milliseconds)])
+    #:serialize (λ [[raw : Master]] (call-with-output-string (λ [db] (write raw db))))
+    #:deserialize (λ [[raw : SQL-Datum]] : Master (read:+? raw master?))))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 (sqlite3-version :memory:)

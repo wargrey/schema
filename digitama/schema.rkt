@@ -46,7 +46,7 @@
 (define-syntax (define-table stx)
   (define (parse-field-definition tablename rowid racket? stx)
     (syntax-parse stx
-      [(field Type (~or (~optional (~seq #:check contract:expr))
+      [(field Type (~or (~optional (~seq #:check contract:expr) #:name "#:check")
                         (~optional (~or (~seq #:default defval) (~seq #:auto generate)) #:name "#:default or #:auto")
                         (~optional (~seq #:guard guard) #:name "#:guard")
                         (~optional (~seq (~and #:not-null not-null)) #:name "#:not-null")
@@ -79,7 +79,9 @@
                        (and (attribute unique) #'#true))))]))
   (syntax-parse stx #:datum-literals [:]
     [(_ tbl #:as Table #:with primary-key (~optional index-only) ([field : DataType constraints ...] ...)
-        (~optional (~seq #:check record-contract:expr) #:defaults ([record-contract #'#true])))
+        (~or (~optional (~seq #:check record-contract:expr) #:name "#:check" #:defaults ([record-contract #'#true]))
+             (~optional (~seq #:serialize ->blob) #:name "#:serialize")
+             (~optional (~seq #:deserialize blob->) #:name "#:deserialize")) ...)
      (with-syntax* ([(rowid ___) (list (id->sql #'primary-key) (format-id #'id "..."))]
                     [(table dbtable) (syntax-parse #'tbl [r:id (list #'r (id->sql #'r))] [(r db) (list #'r (id->sql #'db))])]
                     [racket (if (attribute index-only) (id->sql #'index-only) #'#false)]
@@ -108,7 +110,9 @@
                                 [mkarg (in-syntax #'([field : (U FieldType MaybeNull) defval ...] ...))]
                                 [rearg (in-syntax #'([field : (U FieldType MaybeNull Void) on-update] ...))])
                        (list (cons :fld (cons mkarg (car syns)))
-                             (cons :fld (cons rearg (cadr syns)))))])
+                             (cons :fld (cons rearg (cadr syns)))))]
+                    [serialize (or (attribute ->blob) #'(λ [[raw : Table]] : SQL-Datum (call-with-output-bytes (λ [db] (write raw db)))))]
+                    [deserialize (or (attribute blob->) #'(λ [[raw : SQL-Datum]] : Table (read:+? raw table?)))])
        #'(begin (define-type Table table)
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
                 (struct msg:schema:table msg:schema ([occurrences : (U Table (Listof Table))]) #:prefab)
@@ -177,7 +181,7 @@
                   (for ([row (if (list? records) (in-list records) (in-value records))])
                     (define column-id : SQL-Datum (column-guard 'column-id (table-column row) dbsys)) ...
                     (cond [(false? racket) (query-exec dbc insert.sql column-id ...)]
-                          [else (query-exec dbc insert.sql column-id ... (call-with-output-bytes (λ [db] (write row db))))])))
+                          [else (query-exec dbc insert.sql column-id ... (serialize row))])))
        
                 (define (delete-table [dbc : Connection] [records : (U Table (Listof Table))]) : Void
                   (define (virtual.sql) : Virtual-Statement (delete.sql dbtable rowid))
@@ -191,9 +195,9 @@
                                   #:fetch [size : (U Positive-Integer +inf.0) 1]) : (Sequenceof (U Table exn))
                   (define (virtual.sql [which : Symbol]) : (-> Virtual-Statement)
                     (thunk (simple-select.sql which dbtable rowid racket '(column ...))))
-                  (define (read-table sexp) : (U Table exn)
+                  (define (read-table [sexp : SQL-Datum]) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
-                      (read:+? sexp table?)))
+                      (deserialize sexp)))
                   (define (read-by-pk [pk : SQL-Datum]) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
                       (define record : (Listof SQL-Datum)
@@ -224,8 +228,7 @@
                                            'update "no such record found in the table"))
                                   (define column-id : SQL-Datum (column-guard 'column-id (table-column record) dbsys)) ...
                                   (cond [(false? racket) (query dbc update.sql column-id ... pk)]
-                                        [else (query dbc update.sql column-id ...
-                                                     (call-with-output-bytes (λ [db] (write record db))) pk)])))]))))]))
+                                        [else (query dbc update.sql column-id ... (serialize record) pk)])))]))))]))
 
 (define-syntax (define-schema stx)
   (syntax-parse stx
