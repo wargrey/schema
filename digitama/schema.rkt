@@ -149,10 +149,8 @@
                     (check-fields 'remake-table field ...)
                     (unsafe-table field ...)))
 
-                (define (table->hash [self : Table]) : (HashTable Symbol Any)
-                  (for/hasheq : (HashTable Symbol Any) ([key (in-list '(field ...))]
-                                                        [val-ref (in-list (list table-field ...))])
-                    (values key (val-ref self))))
+                (define (table->hash [self : Table]) : (HashTable Symbol (U (U FieldType MaybeNull) ...))
+                  (make-immutable-hasheq (list (cons 'field (table-field self)) ...)))
 
                 (define (hash->table [src : HashTableTop] #:unsafe? [unsafe? : Boolean #false]) : Table
                   (define field : (U FieldType MaybeNull)
