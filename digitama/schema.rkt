@@ -1,6 +1,6 @@
 #lang digimon
 
-(provide (all-defined-out))
+(provide (all-defined-out) (struct-out msg:schema))
 
 (require typed/db/base)
 

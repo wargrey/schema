@@ -1,19 +1,12 @@
 #lang digimon
 
-(provide (all-defined-out) (struct-out exn:fail:sql))
-(provide (struct-out exn:schema) make-schema-message Schema-Message)
+(provide (all-defined-out) (struct-out exn:fail:sql) (struct-out exn:schema))
+(provide (struct-out msg:schema) make-schema-message Schema-Message)
 
 (require typed/db/base)
 (require "digitama/message.rkt")
 
-(define-type Schema-Message msg:schema)
-
 (struct msg:query msg:log ([rows : (Listof (Vectorof SQL-Datum))]) #:prefab)
-
-(define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol (U SQL-Datum exn) Any * Schema-Message)
-  (lambda [table maniplation urgent . messages]
-    (define-values (level message info) (schema-message-smart-info urgent messages))
-    (msg:schema level message info (if (symbol? table) table (value-name table)) maniplation)))
 
 (define make-query-message : (-> Connection Statement Any Symbol SQL-Datum * Log-Message)
   (lambda [dbc sql detail topic . argl]
