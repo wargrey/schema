@@ -111,7 +111,7 @@
                                 [rearg (in-syntax #'([field : (U FieldType MaybeNull Void) on-update] ...))])
                        (list (cons :fld (cons mkarg (car syns)))
                              (cons :fld (cons rearg (cadr syns)))))]
-                    [serialize (or (attribute serialize) #'(λ [[raw : Table]] : SQL-Datum (~a (table->hash raw))))]
+                    [serialize (or (attribute serialize) #'(λ [[raw : Table]] : SQL-Datum (~s (table->hash raw))))]
                     [deserialize (or (attribute deserialize) #'(λ [[raw : SQL-Datum]] : Table (hash->table (read:+? raw hash?))))])
        #'(begin (define-type Table table)
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
@@ -148,8 +148,14 @@
                     (check-fields 'remake-table field ...)
                     (unsafe-table field ...)))
 
-                (define (table->hash [self : Table]) : (HashTable Symbol (U (U FieldType MaybeNull) ...))
-                  (make-immutable-hasheq (list (cons 'field (table-field self)) ...)))
+                (define (table->hash [self : Table] #:skip-null? [skip? #true]) : (HashTable Symbol (U FieldType ... MaybeNull ...))
+                  (define dict : (Listof (Pairof Symbol (U FieldType ... MaybeNull ...))) (list (cons 'field (table-field self)) ...))
+                  (cond [(not skip?) (make-immutable-hasheq (list (cons 'field (table-field self)) ...))]
+                        [else (for/hasheq : (HashTable Symbol (U FieldType ... MaybeNull ...))
+                                ([key (in-list (list 'field ...))]
+                                 [val (in-list (list (table-field self) ...))]
+                                 #:when val)
+                                (values key val))]))
 
                 (define (hash->table [src : HashTableTop] #:unsafe? [unsafe? : Boolean #false]) : Table
                   (define record : (Listof Any)

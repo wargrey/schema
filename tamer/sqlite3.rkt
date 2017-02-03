@@ -17,7 +17,7 @@
      [rootpage : Natural       #:default (random 32)]
      [ctime    : Fixnum        #:default (current-milliseconds)]
      [mtime    : Fixnum        #:auto (current-milliseconds)])
-    #:serialize (λ [[raw : Master]] (~s (master->hash raw)))
+    #:serialize (λ [[raw : Master]] (~s (tee (master->hash raw #:skip-null? #false))))
     #:deserialize (λ [[raw : SQL-Datum]] : Master (hash->master (read:+? raw hash?) #:unsafe? #true))))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
