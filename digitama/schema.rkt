@@ -1,48 +1,17 @@
 #lang digimon
 
-(provide (except-out (all-defined-out) schema-message-smart-info))
+(provide (all-defined-out))
 
 (require typed/db/base)
 
 (require "virtual-sql.rkt")
+(require "message.rkt")
 
 (require (for-syntax "normalize.rkt"))
 
 (define-type Schema schema)
-(define-type Schema-Message msg:schema)
-
 (struct schema () #:prefab)
-(struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
 
-(struct msg:query msg:log ([rows : (Listof (Vectorof SQL-Datum))]) #:prefab)
-(struct msg:schema msg:log ([maniplation : Symbol]) #:prefab)
-
-(define make-query-message : (-> Connection Statement Any Symbol SQL-Datum * Log-Message)
-  (lambda [dbc sql detail topic . argl]
-    (with-handlers ([exn? exn:schema->message])
-      (msg:query 'info (~a sql) detail topic
-                 (apply query-rows dbc sql argl)))))
-
-(define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol (U SQL-Datum exn) Any * Schema-Message)
-  (lambda [table maniplation urgent . messages]
-    (define-values (level message info) (schema-message-smart-info urgent messages))
-    (msg:schema level message info (if (symbol? table) table (value-name table)) maniplation)))
-
-(define exn:schema->message : (-> exn [#:level Log-Level] Log-Message)
-  (lambda [e #:level [level #false]]
-    (cond [(not (exn:fail:sql? e)) (exn->message e #:level (or level 'error))]
-          [else (exn->message e #:detail (exn:fail:sql-info e) #:level (or level 'error))])))
-
-(define exn:sql-info-ref : (->* ((U exn:fail:sql Log-Message) Symbol) ((-> Any Any)) Any)
-  (lambda [e key [-> values]]
-    (define info : (Listof (Pairof Any Any))
-      (cond [(exn:fail:sql? e) (exn:fail:sql-info e)]
-            [else (let ([detail : Any (msg:log-detail e)])
-                    (if (list? detail) (filter pair? detail) null))]))
-    (define pinfo : (Option (Pairof Any Any)) (assq key info))
-    (and pinfo (-> (cdr pinfo)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-syntax (define-table stx)
   (define (parse-field-definition tablename rowid racket? stx)
     (syntax-parse stx
@@ -149,13 +118,13 @@
                     (unsafe-table field ...)))
 
                 (define (table->hash [self : Table] #:skip-null? [skip? #true]) : (HashTable Symbol (U FieldType ... MaybeNull ...))
-                  (define dict : (Listof (Pairof Symbol (U FieldType ... MaybeNull ...))) (list (cons 'field (table-field self)) ...))
-                  (cond [(not skip?) (make-immutable-hasheq (list (cons 'field (table-field self)) ...))]
-                        [else (for/hasheq : (HashTable Symbol (U FieldType ... MaybeNull ...))
-                                ([key (in-list (list 'field ...))]
-                                 [val (in-list (list (table-field self) ...))]
-                                 #:when val)
-                                (values key val))]))
+                  (if (not skip?)
+                      ((inst make-immutable-hasheq Symbol (U FieldType ... MaybeNull ...)) (list (cons 'field (table-field self)) ...))
+                      (for/hasheq : (HashTable Symbol (U FieldType ... MaybeNull ...))
+                        ([key (in-list (list 'field ...))]
+                         [val (in-list (list (table-field self) ...))]
+                         #:when val)
+                        (values key val))))
 
                 (define (hash->table [src : HashTableTop] #:unsafe? [unsafe? : Boolean #false]) : Table
                   (define record : (Listof Any)
@@ -256,18 +225,3 @@
     [(_ Table-Datum (define-table id #:as ID rest ...) ...)
      #'(begin (define-type Table-Datum (U ID ...))
               (define-table id #:as ID rest ...) ...)]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define schema-message-smart-info : (-> (U SQL-Datum exn) (Listof Any) (Values Log-Level String Any))
-  (lambda [urgent messages]
-    (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
-    (define-values (smart-level smart-brief)
-      (cond [(exn? urgent) (values 'error (exn-message urgent))]
-            [else (values 'info "")]))
-    (values smart-level
-            (cond [(null? messages) smart-brief]
-                  [else (apply format (~a (car messages)) (cdr messages))])
-            (cond [(not (exn? urgent)) urgent]
-                  [(exn:schema? urgent) (info++ urgent (exn:fail:sql-info urgent))]
-                  [(exn:fail:sql? urgent) (exn:fail:sql-info urgent)]
-                  [else (info++ urgent (list (cons 'struct (object-name urgent))))]))))
