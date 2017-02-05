@@ -6,54 +6,21 @@
 
 (require "virtual-sql.rkt")
 (require "message.rkt")
-
-(require (for-syntax "normalize.rkt"))
+(require "syntax.rkt")
 
 (define-type Schema schema)
 (struct schema () #:prefab)
 
 (define-syntax (define-table stx)
-  (define (parse-field-definition tablename rowid racket? stx)
-    (syntax-parse stx
-      [(field Type (~or (~optional (~seq #:check contract:expr) #:name "#:check")
-                        (~optional (~or (~seq #:default defval) (~seq #:auto generate)) #:name "#:default or #:auto")
-                        (~optional (~seq #:guard guard) #:name "#:guard")
-                        (~optional (~seq (~and #:not-null not-null)) #:name "#:not-null")
-                        (~optional (~seq (~and #:unique unique)) #:name "#:unique")
-                        (~optional (~seq (~and #:hide hide)) #:name "#:hide")
-                        (~optional (~seq #:% comment) #:name "#:%")) ...)
-       (define-values (DataType SQLType)
-         (syntax-parse #'Type
-           [(R #:as SQL) (values #'R (id->sql #'SQL 'raw))]
-           [R:id (values #'R (id->sql #'R 'type))]
-           [R (values #'R #'"VARCHAR")]))
-       (define-values (primary-field? not-null?) (values (eq? (syntax-e #'field) rowid) (attribute not-null)))
-       (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
-       (values (and primary-field? (list table-field DataType))
-               (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
-                     table-field (if (attribute contract) #'contract #'#true)
-                     DataType (if (or primary-field? (attribute not-null)) DataType #|DataType may not builtin|# #'False)
-                     (if (attribute generate) #'generate #'(void))
-                     (cond [(attribute defval) #'(defval)]
-                           [(attribute generate) #'(generate)]
-                           [(or primary-field? not-null?) #'()]
-                           [else (syntax-case DataType [Listof]
-                                   [(Listof _) #'(null)]
-                                   [_ #'(#false)])]))
-               (unless (and racket? (attribute hide))
-                 (list #'field (id->sql #'field)
-                       table-field SQLType
-                       (or (attribute guard) #'racket->sql)
-                       (and not-null? #'#true)
-                       (and (attribute unique) #'#true))))]))
   (syntax-parse stx #:datum-literals [:]
     [(_ tbl #:as Table #:with primary-key (~optional index-only) ([field : DataType constraints ...] ...)
         (~or (~optional (~seq #:check record-contract:expr) #:name "#:check" #:defaults ([record-contract #'#true]))
              (~optional (~seq #:serialize serialize) #:name "#:serialize")
              (~optional (~seq #:deserialize deserialize) #:name "#:deserialize")) ...)
-     (with-syntax* ([(rowid ___) (list (id->sql #'primary-key) (format-id #'id "..."))]
-                    [(table dbtable) (syntax-parse #'tbl [r:id (list #'r (id->sql #'r))] [(r db) (list #'r (id->sql #'db))])]
+     (with-syntax* ([___ (format-id #'id "...")]
                     [racket (if (attribute index-only) (id->sql #'index-only) #'#false)]
+                    [rowid (id->sql #'primary-key)]
+                    [(table dbtable) (syntax-parse #'tbl [r:id (list #'r (id->sql #'r))] [(r db) (list #'r (id->sql #'db))])]
                     [([(table-rowid RowidType) (:field table-field field-contract FieldType MaybeNull on-update [defval ...]) ...]
                       [(column-id column table-column DBType column-guard column-not-null column-unique) ...]
                       [check-fields table.sql] [table? table-row? msg:schema:table make-table-message table->hash hash->table]
