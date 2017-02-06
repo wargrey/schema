@@ -1,17 +1,19 @@
 #lang typed/racket
 
+(provide (all-from-out typed/db/base))
 (provide (for-syntax (all-defined-out)))
 (provide (for-syntax (all-from-out "normalize.rkt")))
 
+(require typed/db/base)
+
+(require (for-syntax racket/list))
 (require (for-syntax syntax/parse))
 (require (for-syntax racket/syntax))
 
 (require (for-syntax "normalize.rkt"))
 
-(require "virtual-sql.rkt")
-
 (begin-for-syntax 
-  (define (parse-field-definition tablename rowid racket? stx)
+  (define (parse-field-definition tablename rowids eam? stx)
     (syntax-parse stx
       [(field Type (~or (~optional (~seq #:check contract:expr) #:name "#:check")
                         (~optional (~or (~seq #:default defval) (~seq #:auto generate)) #:name "#:default or #:auto")
@@ -25,22 +27,44 @@
            [(R #:as SQL) (values #'R (id->sql #'SQL 'raw))]
            [R:id (values #'R (id->sql #'R 'type))]
            [R (values #'R #'"VARCHAR")]))
-       (define-values (primary-field? not-null?) (values (eq? (syntax-e #'field) rowid) (attribute not-null)))
+       (define-values (primary? not-null?) (values (and (member (syntax-e #'field) rowids) #true) (attribute not-null)))
        (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
-       (values (and primary-field? (list table-field DataType))
+       (values (and primary? (list #'field table-field))
                (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
-                     table-field (if (attribute contract) #'contract #'#true)
-                     DataType (if (or primary-field? (attribute not-null)) DataType #|DataType may not builtin|# #'False)
+                     table-field
+                     (if (attribute contract) #'contract #'#true)
+                     DataType
+                     (if (or primary? (attribute not-null)) DataType #|DataType may not builtin|# #'False)
                      (if (attribute generate) #'generate #'(void))
                      (cond [(attribute defval) #'(defval)]
                            [(attribute generate) #'(generate)]
-                           [(or primary-field? not-null?) #'()]
+                           [(or primary? not-null?) #'()]
                            [else (syntax-case DataType [Listof]
                                    [(Listof _) #'(null)]
                                    [_ #'(#false)])]))
-               (unless (and racket? (attribute hide))
-                 (list #'field (id->sql #'field)
-                       table-field SQLType
-                       (or (attribute guard) #'racket->sql)
+               (unless (and eam? (not primary?) (attribute hide))
+                 (list #'field
+                       (id->sql #'field)
+                       table-field
+                       SQLType
+                       (or (attribute guard)
+                           (syntax-case DataType [String Symbol]
+                             [String #'values]
+                             [Symbol #'string->symbol]
+                             [_ #'(λ [[sql : String]] (call-with-input-string sql read))]))
                        (and not-null? #'#true)
-                       (and (attribute unique) #'#true))))])))
+                       (and (attribute unique) #'#true))))]))
+
+  (define (parse-table-name stx)
+    (syntax-parse stx
+      [r:id (list #'r (id->sql #'r))]
+      [(r db) (list #'r (id->sql #'db))]))
+  
+  (define (parse-primary-key stx)
+    ;;; NOTE
+    ; primary keys may not contained in the defining struct in which case the struct is treated as a temporary view
+    (syntax-parse stx
+      [id:id (list #'(U SQL-Datum (List SQL-Datum)) (list #'id (id->sql #'id)))]
+      [(id0 id ...) (let ([ids (syntax->list #'(id0 id ...))])
+                      (cons (datum->syntax stx (cons 'List (make-list (length ids) 'SQL-Datum)))
+                            (map (λ [<id>] (list <id> (id->sql <id>))) ids)))])))

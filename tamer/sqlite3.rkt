@@ -9,58 +9,56 @@
 (define plan : Index (length types))
 
 (define-schema SchemaTamer
-  (define-table master #:as Master #:with uuid racket
+  (define-table master #:as Master #:with [uuid name] racket
     ([uuid     : String        #:default (uuid:timestamp)]
      [type     : Symbol        #:default 'table #:not-null]
-     [name     : String        #:not-null #:unique]
-     [tbl-name : String        #:not-null #:check (string-prefix? tbl-name "tbl")]
-     [rootpage : Natural       #:default (random 32)]
+     [name     : String        #:not-null #:unique #:check (string-contains? name ":")]
      [ctime    : Fixnum        #:default (current-milliseconds)]
      [mtime    : Fixnum        #:auto (current-milliseconds)])
-    #:serialize (λ [[raw : Master]] (~s (tee (master->hash raw #:skip-null? #false))))
+    #:serialize (λ [[raw : Master]] (tee (~s (master->hash raw #:skip-null? #false))))
     #:deserialize (λ [[raw : SQL-Datum]] : Master (hash->master (read:+? raw hash?) #:unsafe? #true))))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 (sqlite3-version :memory:)
 
+(with-handlers ([exn? (λ [[e : exn]] (make-schema-message struct:sqlite-master 'create e))])
+  (create-sqlite-master :memory:))
+
 (create-master :memory:)
 (sqlite3-table-info :memory: 'master #("type" "notnull" "pk"))
 (select-sqlite-master :memory:)
 
-(with-handlers ([exn:schema? (λ [[e : exn:schema]] (pretty-display (exn:fail:sql-info e) /dev/stdout))])
-  (make-master #:name "failure" #:tbl-name "BOOM~~~"))
+(with-handlers ([exn:schema? (λ [[e : exn:schema]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
+  (make-master #:name "[awkward]"))
 
 (define masters : (Listof Master)
-  (for/list ([i (in-range (* plan 2))])
+  (for/list ([i (in-range plan)])
     (make-master #:type (list-ref types (remainder (random 256) (length types)))
-                 #:name (symbol->string (gensym 'name:))
-                 #:tbl-name (symbol->string (gensym 'tbl:))
-                 #:rootpage (assert i index?))))
+                 #:name (symbol->string (gensym 'master:)))))
 
-(with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-print (exn:fail:sql-info e) /dev/stdout))])
+(with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-print (exn:fail:sql-info e) /dev/stderr))])
   (insert-master :memory: masters)
   (insert-master :memory: masters))
 
 (for ([record (in-master :memory:)] [idx (in-naturals)])
   (when (master? record)
-    (cond [(< idx plan) (delete-master :memory: record)]
-          [(< idx (+ plan 2)) (update-master :memory: (remake-master record))]
-          [else (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-print (exn:fail:sql-info e) /dev/stdout))])
+    (cond [(< idx (quotient plan 2)) (delete-master :memory: record)]
+          [(< idx (* (quotient plan 4) 3)) (update-master :memory: (remake-master record))]
+          [else (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
                   (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (uuid:random))))])))
 
-(define uuids : (Listof String)
-  (for/list : (Listof String) ([record (in-master :memory:)])
-    (pretty-display record (if (exn? record) /dev/stderr /dev/stdout))
-    (if (exn? record) (uuid:timestamp) (master-uuid record))))
-
-(with-handlers ([exn? (λ [[e : exn]] (make-schema-message struct:sqlite-master 'create e))])
-  (create-sqlite-master :memory:))
-
-(when (pair? uuids) (select-master :memory: #:where (car uuids)))
+(for/list : (Listof Any) ([m (in-list masters)])
+  (define uuids : (List String String) (list (master-uuid m) (master-name m)))
+  (define ms : (Listof (U exn Master)) (select-master :memory: #:where uuids))
+  (cond [(null? ms) (cons uuids 'deleted)]
+        [else (let ([m : (U exn Master) (car ms)])
+                (cond [(exn? m) m]
+                      [(eq? (master-ctime m) (master-mtime m)) (cons uuids 'unchanged)]
+                      [else m]))]))
 
 (disconnect :memory:)
 
-(define src : Master (remake-master #false #:name "remake" #:tbl-name "tbl:test"))
-(values src (remake-master src #:tbl-name "tbl:okay") (master->hash src))
+(define src : Master (remake-master #false #:name "remake:make"))
+(values src (remake-master src #:name "remake:okay") (master->hash src))
 (with-handlers ([exn? (λ [e] e)]) (remake-master #false))
 (with-handlers ([exn? (λ [e] e)]) (hash->master (make-hasheq)))
