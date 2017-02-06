@@ -1,0 +1,39 @@
+#lang typed/racket/base
+
+(provide (all-defined-out))
+(provide (all-from-out typed/racket/random))
+
+(require racket/fixnum)
+(require racket/flonum)
+(require racket/math)
+
+(require typed/racket/date)
+(require typed/racket/random)
+
+(require "digitama/uupk.rkt")
+
+(define utc-seconds : (->* (Index) (Positive-Byte Positive-Byte Byte Byte Byte Boolean) Integer)
+  (lambda [year [month 1] [day 1] [hour 0] [minute 0] [second 0] [local? #true]]
+    (find-seconds second minute hour day month year local?)))
+
+(define pk64:timestamp : (->* () (Integer) Integer)
+  (lambda [[diff:s 0]]
+    (define version : Byte 1) #b11
+    (define now:ms : Flonum (current-inexact-milliseconds))
+    (define now:s : Integer (fxquotient (exact-floor now:ms) 1000))
+    (define diff32:s : Fixnum (fxand (fx- now:s diff:s) #xFFFF))
+    (bitwise-ior (arithmetic-shift diff32:s 32)
+                 (arithmetic-shift version 30)
+                 (fxlshift (variant+clock-sequence) 16)
+                 (fx- (exact-floor (fl* now:ms 1000.0))
+                      (fx* now:s 1000000)))))
+
+(define pk64:random : (->* () (Integer) Integer)
+  (lambda [[diff:s 0]]
+    (define version : Byte 2) #b11
+    (define diff32:s : Fixnum (fxand (fx- (current-seconds) diff:s) #xFFFF))
+    (define urnd : Integer (integer-bytes->integer (crypto-random-bytes 2) #false #true))
+    (bitwise-ior (arithmetic-shift diff32:s 32)
+                 (arithmetic-shift version 30)
+                 (fxlshift (variant+clock-sequence) 16)
+                 (fxand urnd #xFFFF))))

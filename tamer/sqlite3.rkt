@@ -8,9 +8,11 @@
 (define types : (Listof Symbol) '(table index view trigger))
 (define plan : Index (length types))
 
+(define launch-time : Integer (utc-seconds 2016 12 10 04 44 37))
+
 (define-schema SchemaTamer
   (define-table master #:as Master #:with [uuid name] racket
-    ([uuid     : String        #:default (uuid:timestamp)]
+    ([uuid     : Integer       #:default (pk64:timestamp launch-time)]
      [type     : Symbol        #:default 'table #:not-null]
      [name     : String        #:not-null #:unique #:check (string-contains? name ":")]
      [ctime    : Fixnum        #:default (current-milliseconds)]
@@ -45,10 +47,10 @@
     (cond [(< idx (quotient plan 2)) (delete-master :memory: record)]
           [(< idx (* (quotient plan 4) 3)) (update-master :memory: (remake-master record))]
           [else (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
-                  (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (uuid:random))))])))
+                  (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (pk64:random launch-time))))])))
 
 (for/list : (Listof Any) ([m (in-list masters)])
-  (define uuids : (List String String) (list (master-uuid m) (master-name m)))
+  (define uuids : (List Integer String) (list (master-uuid m) (master-name m)))
   (define ms : (Listof (U exn Master)) (select-master :memory: #:where uuids))
   (cond [(null? ms) (cons uuids 'deleted)]
         [else (let ([m : (U exn Master) (car ms)])

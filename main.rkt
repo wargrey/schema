@@ -7,3 +7,4 @@
 
 (require/provide "digitama/schema.rkt")
 (require/provide "message.rkt")
+(require/provide "uupk.rkt")
