@@ -72,8 +72,8 @@
                            (let ([?fields (remove-duplicates (filter symbol? (flatten expected)))])
                              (for/hasheq ([f (in-list (list 'field ...))] [v (in-list (list field ...))] #:when (memq f ?fields))
                                (values f v))))
-                         (throw [exn:schema 'contract `((struct . table) (expected . ,expected) (given . ,given))]
-                                func "constraint violation"))]))
+                         (schema-throw [exn:schema 'contract `((struct . table) (expected . ,expected) (given . ,given))]
+                                       func "constraint violation"))]))
 
                 (define (make-table #:unsafe? [unsafe? : Boolean #false] mkargs ...) : Table
                   (when (not unsafe?) (check-fields 'make-table field ...))
@@ -167,8 +167,8 @@
                                    [guard (in-list (list column-guard ...))])
                           (sql->racket sql guard)))
                       (cond [(table-row? record) (apply unsafe-table record)]
-                            [else (throw [exn:schema 'assertion `((struct . table) (record . ,pks) (got . ,record))]
-                                         'select-table "maybe the database is penetrated")])))
+                            [else (schema-throw [exn:schema 'assertion `((struct . table) (record . ,pks) (got . ,record))]
+                                                'select-table "maybe the database is penetrated")])))
                   (cond [(and where)
                          (match-define (list pkid ...) (if (sql-datum? where) (list where) where))
                          (cond [eam (sequence-map read-table (in-query dbc #:fetch size (sql-ref 'select-where 'byrowid) pkid ...))]
@@ -188,8 +188,8 @@
                                 (for ([self (if (list? selves) (in-list selves) (in-value selves))])
                                   (let ([rowid : SQL-Datum (table-rowid self)] ...)
                                     (when (and check? (false? (query-maybe-value dbc check.sql rowid ...)))
-                                      (throw [exn:schema 'norow `((struct . table) (record . ,(vector rowid ...)))]
-                                             'update-table "no such record found in the table"))
+                                      (schema-throw [exn:schema 'norow `((struct . table) (record . ,(vector rowid ...)))]
+                                                    'update-table "no such record found in the table"))
                                     (let ([column-id : SQL-Datum (racket->sql (table-column self) dbsys)] ...)
                                       (cond [(false? eam) (query dbc up.sql column-id ... rowid ...)]
                                             [else (query dbc up.sql column-id ... (serialize self) rowid ...)])))))]))))]))

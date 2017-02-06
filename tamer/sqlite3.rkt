@@ -36,7 +36,7 @@
     (make-master #:type (list-ref types (remainder (random 256) (length types)))
                  #:name (symbol->string (gensym 'master:)))))
 
-(with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-print (exn:fail:sql-info e) /dev/stderr))])
+(with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
   (insert-master :memory: masters)
   (insert-master :memory: masters))
 
