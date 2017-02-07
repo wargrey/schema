@@ -3,4 +3,4 @@
 @title{Schema: Data Modeling for Typed Racket}
 @author{wargrey}
 
-@italic{Sorry, but I will write it as soon as possible.}
+@italic{Sorry, I will write it when it ready to use.}
