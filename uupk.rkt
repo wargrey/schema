@@ -1,6 +1,6 @@
 #lang typed/racket/base
 
-(provide (all-defined-out))
+(provide (except-out (all-defined-out) variant+clock-sequence))
 (provide (all-from-out typed/racket/random))
 
 (require racket/fixnum)
@@ -9,8 +9,6 @@
 
 (require typed/racket/date)
 (require typed/racket/random)
-
-(require "digitama/uupk.rkt")
 
 (define utc-seconds : (->* (Index) (Positive-Byte Positive-Byte Byte Byte Byte Boolean) Integer)
   (lambda [year [month 1] [day 1] [hour 0] [minute 0] [second 0] [local? #true]]
@@ -37,3 +35,7 @@
                  (arithmetic-shift version 30)
                  (fxlshift (variant+clock-sequence) 16)
                  (fxand urnd #xFFFF))))
+
+(define variant+clock-sequence : (-> Index)
+  (lambda [] ; TODO: what if the clock is set backwards?
+    (fxand (current-memory-use) #b11111111111111)))
