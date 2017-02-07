@@ -20,11 +20,11 @@
     (define now:ms : Flonum (current-inexact-milliseconds))
     (define now:s : Integer (fxquotient (exact-floor now:ms) 1000))
     (define diff32:s : Fixnum (fxand (fx- now:s diff:s) #xFFFF))
+    (define us : Fixnum (fx- (exact-floor (fl* now:ms 1000.0)) (fx* now:s 1000000)))
     (bitwise-ior (arithmetic-shift diff32:s 32)
                  (arithmetic-shift version 30)
-                 (fxlshift (variant+clock-sequence) 16)
-                 (fx- (exact-floor (fl* now:ms 1000.0))
-                      (fx* now:s 1000000)))))
+                 (fxlshift us 14)
+                 (variant+clock-sequence))))
 
 (define pk64:random : (->* () (Integer) Integer)
   (lambda [[diff:s 0]]

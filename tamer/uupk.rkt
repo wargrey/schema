@@ -15,11 +15,11 @@
 
 (define make-job : (-> (-> Integer) Index (-> (Listof UUPK)))
   (lambda [pk64 fid]
-    (thunk (build-list 16 (λ [[seq : Index]]
-                            (make-uupk #:pk (pk64)
-                                       #:type (value-name pk64)
-                                       #:fid fid
-                                       #:seq seq))))))
+    (thunk (time (build-list 16 (λ [[seq : Index]]
+                                  (make-uupk #:pk (pk64)
+                                             #:type (value-name pk64)
+                                             #:fid fid
+                                             #:seq seq)))))))
 
 (define do-insert : (-> UUPK Void)
   (lambda [record]
