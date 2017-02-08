@@ -24,12 +24,12 @@
                         (~optional (~seq #:% comment) #:name "#:%")) ...)
        (define-values (DataType SQLType)
          (syntax-parse #'Type
-           [(R #:as SQL) (values #'R (id->sql #'SQL 'raw))]
-           [R:id (values #'R (id->sql #'R 'type))]
-           [R (values #'R #'"VARCHAR")]))
+           [(Racket #:as SQL) (values #'Racket (id->sql #'SQL 'raw))]
+           [Racket:id (values #'Racket (id->sql #'Racket 'type))]
+           [Racket (values #'Racket #'"VARCHAR")]))
        (define-values (primary? not-null?) (values (and (member (syntax-e #'field) rowids) #true) (attribute not-null)))
        (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
-       (values (and primary? (list #'field table-field))
+       (values (and primary? table-field)
                (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
                      table-field
                      (if (attribute contract) #'contract #'#true)
@@ -43,8 +43,7 @@
                                    [(Listof _) #'(null)]
                                    [_ #'(#false)])]))
                (unless (and eam? (not primary?) (attribute hide))
-                 (list #'field
-                       (id->sql #'field)
+                 (list (id->sql #'field)
                        table-field
                        SQLType
                        (or (attribute guard)
