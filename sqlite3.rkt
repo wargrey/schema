@@ -19,7 +19,7 @@
 
 (define-schema SQLite3-Tables
   (define-table [sqlite-master sqlite-master] #:as Sqlite-Master #:with rowid
-    ([type     : String        #:not-null]
+    ([type     : Symbol        #:not-null]
      [name     : String        #:not-null]
      [tbl-name : String        #:not-null]
      [rootpage : Natural       #:not-null]
