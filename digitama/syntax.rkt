@@ -33,8 +33,8 @@
                (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
                      table-field
                      (if (attribute contract) #'contract #'#true)
-                     DataType
-                     (if (or primary? (attribute not-null)) DataType #|DataType may not builtin|# #'False)
+                     DataType #|Cannot union the DataType and False here since the type may not builtin|#
+                     (if (or primary? (attribute not-null)) DataType #'False)
                      (if (attribute generate) #'generate #'(void))
                      (cond [(attribute defval) #'(defval)]
                            [(attribute generate) #'(generate)]
@@ -60,10 +60,9 @@
       [(r db) (list #'r (id->sql #'db))]))
   
   (define (parse-primary-key stx)
-    ;;; NOTE
     ; primary keys may not contained in the defining struct in which case the struct is treated as a temporary view
     (syntax-parse stx
-      [id:id (list #'(U SQL-Datum (List SQL-Datum)) (list #'id (id->sql #'id)))]
-      [(id0 id ...) (let ([ids (syntax->list #'(id0 id ...))])
-                      (cons (datum->syntax stx (cons 'List (make-list (length ids) 'SQL-Datum)))
-                            (map (λ [<id>] (list <id> (id->sql <id>))) ids)))])))
+      [id:id (list #'(Vector SQL-Datum) #'(U SQL-Datum (Vector SQL-Datum)) (list #'id (id->sql #'id)))]
+      [(id0 id ...) (let* ([ids (syntax->list #'(id0 id ...))]
+                           [Rowid (datum->syntax stx (cons 'Vector (make-list (length ids) 'SQL-Datum)))])
+                      (list* Rowid Rowid (map (λ [<id>] (list <id> (id->sql <id>))) ids)))])))

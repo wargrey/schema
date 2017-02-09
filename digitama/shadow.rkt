@@ -103,27 +103,27 @@
       (schema-throw [exn:schema 'contract `((struct . ,table) (expected . ,expected) (given . ,given))]
                     func "constraint violation"))))
 
-(define check-default-value : (All (a) (-> Symbol Symbol (Listof a) a))
-  (lambda [func field defval...]
-    (when (null? defval...) (error func "missing value for field '~a'" field))
-    (car defval...)))
+(define check-default-value : (All (a) (-> Symbol Symbol (U a Void) a))
+  (lambda [func field defval]
+    (when (void? defval) (error func "missing value for field '~a'" field))
+    defval))
 
 (define check-row : (All (a) (-> Symbol (Listof Any) (-> Any Boolean : #:+ a) String Any * a))
   (lambda [func metrics table-row? errfmt . errmsg]
     (cond [(table-row? metrics) metrics]
           [else (apply error func errfmt errmsg)])))
 
-(define field-value : (All (a b c) (-> Symbol Symbol (Option a) (-> a b) (U b Void) (-> (Listof c)) (U b c)))
-  (lambda [func field self table-field value mkdefval...]
+(define field-value : (All (a b c) (-> Symbol Symbol (Option a) (-> a b) (U b Void) (-> (U c Void)) (U b c)))
+  (lambda [func field self table-field value mkdefval]
     (cond [(not (void? value)) value]
-          [(not self) (check-default-value func field (mkdefval...))]
+          [(not self) (check-default-value func field (mkdefval))]
           [else (table-field self)])))
 
-(define record-ref : (All (a) (-> Symbol HashTableTop (Listof Symbol) (Listof (-> (Listof Any))) (-> Any Boolean : #:+ a) a))
-  (lambda [func src fields mkdefvals... table-row?]
+(define record-ref : (All (a) (-> Symbol HashTableTop (Listof Symbol) (Listof (-> Any)) (-> Any Boolean : #:+ a) a))
+  (lambda [func src fields mkdefval table-row?]
     (define metrics : (Listof Any)
       (for/list ([field (in-list fields)]
-                 [mkval (in-list mkdefvals...)])
+                 [mkval (in-list mkdefval)])
         (hash-ref src field (λ [] (check-default-value func field (mkval))))))
     (check-row func metrics table-row? "mismatched source: ~a" metrics)))
 

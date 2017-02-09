@@ -17,13 +17,13 @@
              (~optional (~seq #:serialize serialize) #:name "#:serialize")
              (~optional (~seq #:deserialize deserialize) #:name "#:deserialize")) ...)
      (with-syntax* ([___ (format-id #'id "...")]
-                    [(table dbtable) (parse-table-name #'tbl)]
-                    [(RowidType [pkey dbrowid] ...) (parse-primary-key #'primary-key)]
+                    [([table dbtable] Table-Rowid) (list (parse-table-name #'tbl) (format-id #'Table "~a-Rowid" #'Table))]
+                    [(RowidType RowidType* [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
                     [eam (if (attribute entity-attribute-mode) (id->sql #'entity-attribute-mode) #'#false)]
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...]) ...]
                       [(column table-column DBType column-guard column-not-null column-unique) ...]
-                      [table? table-row? msg:schema:table make-table-message table->hash hash->table
+                      [table? table-row? table-rowid-ref msg:schema:table make-table-message table->hash hash->table
                               force-create force-insert select-rowid select-where check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
@@ -38,8 +38,8 @@
                                                (cons column-info snmuloc)
                                                (if pk-info (cons pk-info sdiwor) sdiwor))])))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif) (reverse snmuloc)
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "msg:schema:~a" "make-~a-message" "~a->hash" "hash->~a"
-                                                            "create-~a-if-not-exists" "insert-~a-or-replace"
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "~a-rowid" "msg:schema:~a" "make-~a-message"
+                                                            "~a->hash" "hash->~a" "create-~a-if-not-exists" "insert-~a-or-replace"
                                                             "select-~a-rowid" "select-~a-where" "check-~a-rowid"))])
                                (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'in 'select 'update))])
@@ -53,11 +53,17 @@
                              (cons :fld (cons rearg (cadr syns)))))]
                     [serialize (or (attribute serialize) #'(λ [[raw : Table]] : SQL-Datum (~s (table->hash raw))))]
                     [deserialize (or (attribute deserialize) #'(λ [[raw : SQL-Datum]] : Table (hash->table (read:+? raw hash?))))]
-                    [contract-literals #'(list 'field-contract ... 'record-contract)])
+                    [contract-literals #'(list 'field-contract ... 'record-contract)]
+                    [define-table-rowid (cond [(syntax-e #'view?) #'(void)]
+                                              [else #'(define (table-rowid-ref [self : Table]) : RowidType
+                                                        (vector (table-rowid self) ...))])])
        #'(begin (define-type Table table)
+                (define-type Table-Rowid RowidType)
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
                 (struct msg:schema:table msg:schema ([occurrences : (U Table (Listof Table))]) #:prefab)
                 (define-predicate table-row? (List (U FieldType MaybeNull) ...))
+
+                define-table-rowid
 
                 (define (make-table #:unsafe? [unsafe? : Boolean #false] mkargs ...) : Table
                   (when (not unsafe?)
@@ -66,7 +72,7 @@
                   (unsafe-table field ...))
 
                 (define (remake-table [self : (Option Table)] #:unsafe? [unsafe? : Boolean #false] reargs ...) : Table
-                  (let ([field (field-value 'remake-table 'field self table-field field (thunk (list defval ...)))] ...)
+                  (let ([field (field-value 'remake-table 'field self table-field field (thunk (void) defval ...))] ...)
                     (when (not unsafe?)
                       (check-constraint 'remake-table 'table '(field ...) contract-literals
                                         (list field-contract ... record-contract) field ...))
@@ -78,7 +84,7 @@
                    '(field ...) (list (table-field self) ...) skip?))
 
                 (define (hash->table [src : HashTableTop] #:unsafe? [unsafe? : Boolean #false]) : Table
-                  (define record (record-ref 'hash->table src '(field ...) (list (thunk (list defval ...)) ...) table-row?))
+                  (define record (record-ref 'hash->table src '(field ...) (list (thunk (void) defval ...) ...) table-row?))
                   (cond [(and unsafe?) (apply unsafe-table record)]
                         [else (match-let ([(list field ...) record])
                                 (check-constraint 'hash->table 'table '(field ...) contract-literals
@@ -114,7 +120,7 @@
 
                 (define-syntax (select-table stx) (syntax-case stx [] [(_ argl ___) #'(sequence->list (in-table argl ___))]))
                 (define (in-table [dbc : Connection]
-                                  #:where [where : (Option RowidType) #false]
+                                  #:where [where : (U RowidType RowidType* False) #false]
                                   #:fetch [size : (U Positive-Integer +inf.0) 1]) : (Sequenceof (U Table exn))
                   (define-values (select.sql select-row.sql)
                     (get-select-sql 'select-rowid (and where 'select-where) 'in-table 'select-table
@@ -122,16 +128,16 @@
                   (define (read-table [sexp : SQL-Datum]) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
                       (deserialize sexp)))
-                  (define (select-by-rowid [rowid : (Vectorof SQL-Datum)]) : (U Table exn)
+                  (define (select-by-rowid [row-id : (Vectorof SQL-Datum)]) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
-                      (apply unsafe-table (select-row-from-table 'select-table 'table dbc select-row.sql rowid
+                      (apply unsafe-table (select-row-from-table 'select-table 'table dbc select-row.sql row-id
                                                                  table-row? (list column-guard ...)))))
                   (if (not eam)
                       (cond [(not where) (in-list (map select-by-rowid (query-rows dbc select.sql)))]
-                            [else (in-value (select-by-rowid (if (sql-datum? where) (vector where) (list->vector where))))])
+                            [else (in-value (select-by-rowid (if (sql-datum? where) (vector where) where)))])
                       (cond [(not where) (sequence-map read-table (in-query dbc #:fetch size select.sql))]
-                            [else (match-let ([(list pkey ...) (if (sql-datum? where) (list where) where)])
-                                    (sequence-map read-table (in-query dbc #:fetch size select.sql pkey ...)))])))
+                            [else (match-let ([(vector rowid ...) (if (sql-datum? where) (vector where) where)])
+                                    (sequence-map read-table (in-query dbc #:fetch size select.sql rowid ...)))])))
 
                 (define (update-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:check-first? [check? : Boolean #true]) : Void
