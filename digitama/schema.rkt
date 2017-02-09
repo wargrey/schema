@@ -18,7 +18,7 @@
              (~optional (~seq #:deserialize deserialize) #:name "#:deserialize")) ...)
      (with-syntax* ([___ (format-id #'id "...")]
                     [([table dbtable] Table-Rowid) (list (parse-table-name #'tbl) (format-id #'Table "~a-Rowid" #'Table))]
-                    [(RowidType RowidType* [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
+                    [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
                     [eam (if (attribute entity-attribute-mode) (id->sql #'entity-attribute-mode) #'#false)]
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...]) ...]
@@ -120,24 +120,21 @@
 
                 (define-syntax (select-table stx) (syntax-case stx [] [(_ argl ___) #'(sequence->list (in-table argl ___))]))
                 (define (in-table [dbc : Connection]
-                                  #:where [where : (U RowidType RowidType* False) #false]
+                                  #:where [where : (U RowidType (Pairof String (Listof SQL-Datum)) False) #false]
                                   #:fetch [size : (U Positive-Integer +inf.0) 1]) : (Sequenceof (U Table exn))
                   (define-values (select.sql select-row.sql)
-                    (get-select-sql 'select-rowid (and where 'select-where) 'in-table 'select-table
-                                    dbtable '(dbrowid ...) eam '(column ...)))
-                  (define (read-table [sexp : SQL-Datum]) : (U Table exn)
-                    (with-handlers ([exn? (λ [[e : exn]] e)])
-                      (deserialize sexp)))
-                  (define (select-by-rowid [row-id : (Vectorof SQL-Datum)]) : (U Table exn)
-                    (with-handlers ([exn? (λ [[e : exn]] e)])
-                      (apply unsafe-table (select-row-from-table 'select-table 'table dbc select-row.sql row-id
-                                                                 table-row? (list column-guard ...)))))
-                  (if (not eam)
-                      (cond [(not where) (in-list (map select-by-rowid (query-rows dbc select.sql)))]
-                            [else (in-value (select-by-rowid (if (sql-datum? where) (vector where) where)))])
-                      (cond [(not where) (sequence-map read-table (in-query dbc #:fetch size select.sql))]
-                            [else (match-let ([(vector rowid ...) (if (sql-datum? where) (vector where) where)])
-                                    (sequence-map read-table (in-query dbc #:fetch size select.sql rowid ...)))])))
+                    (get-select-sql 'select-rowid 'select-where 'in-table 'select-table
+                                    dbtable where '(dbrowid ...) eam '(column ...)))
+                  (define (read-racket [sexp : SQL-Datum]) : (U Table exn)
+                    (with-handlers ([exn? (λ [[e : exn]] e)]) (deserialize sexp)))
+                  (define (read-row [row-id : (Vectorof SQL-Datum)]) : Table
+                    (apply unsafe-table (select-row-from-table 'select-table 'table dbc select-row.sql row-id
+                                                               table-row? (list column-guard ...))))
+                  (cond [(not eam) (do-select-row dbc select.sql read-row where)]
+                        [(not where) (sequence-map read-racket (in-query dbc #:fetch size select.sql))]
+                        [(pair? where) (sequence-map read-racket (apply in-query dbc #:fetch size select.sql (cdr where)))]
+                        [else (match-let ([(vector rowid ...) where])
+                                (sequence-map read-racket (in-query dbc #:fetch size select.sql rowid ...)))]))
 
                 (define (update-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:check-first? [check? : Boolean #true]) : Void

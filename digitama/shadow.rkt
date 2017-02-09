@@ -15,14 +15,14 @@
   (lambda [func create maybe-force dbc dbtable rowid eam cols types not-nulls uniques]
     (unless (not func) (throw exn:fail:unsupported func "cannot create a temporary view"))
     (define (mksql) : Virtual-Statement (create-table.sql maybe-force dbtable rowid eam cols types not-nulls uniques))
-    (query-exec dbc (sql-ref! (or maybe-force create) mksql))))
+    (query-exec dbc (hash-ref! sqls (or maybe-force create) mksql))))
 
 (define do-insert-table : (All (a) (-> (Option Symbol) Symbol (Option Symbol) String (Option String) (Listof String)
                                        Connection (Sequenceof a) (Listof (-> a Any)) (-> a SQL-Datum) Void))
   (lambda [func insert maybe-replace dbtable eam cols dbc selves refs serialize]
     (define (mksql) : Virtual-Statement (insert-into.sql maybe-replace dbtable eam cols))
     (unless (not func) (throw exn:fail:unsupported func "cannot insert records into a temporary view"))
-    (define insert.sql : Statement (sql-ref! (or maybe-replace insert) mksql))
+    (define insert.sql : Statement (hash-ref! sqls (or maybe-replace insert) mksql))
     (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
     (for ([record : a selves])
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbsys)))
@@ -34,7 +34,7 @@
   (lambda [func view? dbtable rowid dbc selves refs]
     (define (mksql) : Virtual-Statement (delete-from.sql dbtable rowid))
     (when view? (throw exn:fail:unsupported func "cannot delete records from a temporary view"))
-    (define delete.sql : Statement (sql-ref! func mksql))
+    (define delete.sql : Statement (hash-ref! sqls func mksql))
     (for ([record : a selves])
       (apply query-exec dbc delete.sql
              (for/list : (Listof SQL-Datum) ([ref (in-list refs)]) (ref record))))))
@@ -45,8 +45,8 @@
     (when view? (throw exn:fail:unsupported func "cannot update records of a temporary view"))
     (define (mkup) : Virtual-Statement (update.sql dbtable rowid eam cols))
     (define (mkck) : Virtual-Statement (simple-select.sql 'ckrowid dbtable rowid eam cols))
-    (define up.sql : Statement (sql-ref! func mkup))
-    (define ck.sql : Statement (if maybe-chpk (sql-ref! maybe-chpk mkck) up.sql))
+    (define up.sql : Statement (hash-ref! sqls func mkup))
+    (define ck.sql : Statement (if maybe-chpk (hash-ref! sqls maybe-chpk mkck) up.sql))
     (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
     (for ([record : a selves])
       (define rowid : (Listof SQL-Datum) (for/list ([ref (in-list pkrefs)]) (ref record)))
@@ -58,15 +58,18 @@
             [else (apply query dbc up.sql (serialize record) (append metrics rowid))]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define get-select-sql : (-> Symbol (Option Symbol) Symbol Symbol String (Listof+ String) (Option String) (Listof String)
+(define get-select-sql : (-> Symbol Symbol Symbol Symbol String (U False VectorTop (Pairof String (Listof Any)))
+                             (Listof+ String) (Option String) (Listof String)
                              (Values Statement Statement))
-  (lambda [select-rowid maybe-where select-racket select-row dbtable rowid eam cols]
+  (lambda [select-rowid select-where select-racket select-row dbtable where rowid eam cols]
     (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid eam cols)))
+    (define (mkugly [fmt : String] [_ : (Listof Any)]) : Statement (ugly-select.sql dbtable fmt (length _) rowid eam))
     (define sql : Statement
-      (cond [(and maybe-where) (sql-ref! maybe-where (mksql 'byrowid))]
-            [(and eam) (sql-ref! select-racket (mksql 'nowhere))]
-            [else (sql-ref! select-rowid (mksql 'nowhere))]))
-    (cond [(not eam) (values sql (sql-ref! select-row (mksql 'row)))]
+      (cond [(pair? where) (hash-ref! ugly-sqls (cons dbtable (car where)) (λ [] (mkugly (car where) (cdr where))))]
+            [(and where) (hash-ref! sqls select-where (mksql 'byrowid))]
+            [(and eam) (hash-ref! sqls select-racket (mksql 'nowhere))]
+            [else (hash-ref! sqls select-rowid (mksql 'nowhere))]))
+    (cond [(not eam) (values sql (hash-ref! sqls select-row (mksql 'row)))]
           [else (values sql sql)])))
 
 (define select-row-from-table : (All (a) (-> Symbol Symbol Connection Statement (Vectorof SQL-Datum)
@@ -80,11 +83,27 @@
           [else (schema-throw [exn:schema 'assertion `((struct . ,table) (record . ,rowid) (got . ,metrics))]
                               func "maybe the database is penetrated")])))
 
+(define do-select-row : (All (a) (->  Connection Statement (-> (Vectorof SQL-Datum) a)
+                                     (U False (Vectorof SQL-Datum) (Pairof String (Listof SQL-Datum)))
+                                     (Sequenceof (U a exn))))
+  (lambda [dbc sql select where]
+    (define (subselect [rowid : (Vectorof SQL-Datum)]) (with-handlers ([exn? (λ [[e : exn]] e)]) (select rowid)))
+    (cond [(not where) (in-list (map select (query-rows dbc sql)))]
+          [(pair? where) (in-list (map select (apply query-rows dbc sql (cdr where))))]
+          [else (in-value (select where))])))
+
+(define do-select-racket : (All (a) (->  Connection Statement (-> (Vectorof SQL-Datum) a)
+                                         (U False (Vectorof SQL-Datum) (Pairof String (Listof SQL-Datum)))
+                                         (Sequenceof (U a exn))))
+  (lambda [dbc sql select where]
+    (define (subselect [rowid : (Vectorof SQL-Datum)]) (with-handlers ([exn? (λ [[e : exn]] e)]) (select rowid)))
+    (cond [(not where) (in-list (map select (query-rows dbc sql)))]
+          [(pair? where) (in-list (map select (apply query-rows dbc sql (cdr where))))]
+          [else (in-value (select where))])))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define ugly-sqls : (HashTable Any Statement) (make-hash))
 (define sqls : (HashTable Symbol Statement) (make-hasheq))
-(define sql-ref! : (-> Symbol (-> Statement) Statement)
-  (lambda [which mksql]
-    (hash-ref! sqls which mksql)))
 
 (define check-constraint : (-> Symbol Symbol (Listof Symbol) (Listof Any) (Listof Any) Any * Void)
   (lambda [func table fields literals contracts  . givens]

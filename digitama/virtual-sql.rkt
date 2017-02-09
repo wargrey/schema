@@ -23,15 +23,22 @@
           [(string? v) (->racket v)]
           [else v])))
 
+(define $? : (-> Symbol Integer String)
+  (lambda [dbn idx]
+    (cond [(memq dbn '(sqlite3 postgresql)) (string-append "$" (number->string idx))]
+          [else "?"])))
+
 (define string-join-map : (-> (Listof String) String String)
   (lambda [cols func]
     (format (string-append func "(~a)")
             (string-join cols (string-append "), " func "(")))))
 
-(define string-join=$i : (->* ((Listof String) String) (Index) String)
-  (lambda [cols seq [i0 0]]
-    (string-join (for/list : (Listof String) ([pk (in-list cols)] [idx (in-naturals (add1 i0))])
-                   (string-append pk " = $" (number->string idx)))
+(define string-join=$i : (->* (Symbol (Listof String) String) (Index) String)
+  (lambda [dbn cols seq [i0 0]]
+    (string-join (for/list : (Listof String)
+                   ([pk (in-list cols)]
+                    [idx (in-naturals (add1 i0))])
+                   (string-append pk " = " ($? dbn idx)))
                  seq)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -85,20 +92,33 @@
        (case (dbsystem-name dbms)
          [(sqlite3)
           (format "UPDATE ~a SET ~a WHERE ~a;" table
-                  (string-join=$i (if eam (cons eam cols) cols) ", " (length rowid))
-                  (string-join=$i rowid " AND " 0))]
+                  (string-join=$i 'sqlite3 (if eam (cons eam cols) cols) ", " (length rowid))
+                  (string-join=$i 'sqlite3 rowid " AND " 0))]
          [else (throw exn:fail:unsupported 'update.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
 (define simple-select.sql : (-> Symbol String (Listof String) (Option String) (Listof String) Virtual-Statement)
   (lambda [which table rowid eam cols]
     (define ~select : String "SELECT ~a FROM ~a WHERE ~a;")
+    (define (rowid-join [dbms : DBSystem]) : String (string-join=$i (dbsystem-name dbms) rowid " AND " 0))
     (virtual-statement
      (case which
        [(nowhere) (format "SELECT ~a FROM ~a;" (or eam (string-join rowid ", ")) table)]
-       [(byrowid) (λ [[dbms : DBSystem]] (format ~select (or eam (string-join rowid ", ")) table (string-join=$i rowid " AND " 0)))]
-       [(ckrowid) (λ [[dbms : DBSystem]] (format ~select (car rowid) table (string-join=$i rowid " AND " 0)))]
-       [else #|row|# (λ [[dbms : DBSystem]] (format ~select (string-join cols ", ") table (string-join=$i rowid " AND " 0)))]))))
+       [(byrowid) (λ [[dbms : DBSystem]] (format ~select (or eam (string-join rowid ", ")) table (rowid-join dbms)))]
+       [(ckrowid) (λ [[dbms : DBSystem]] (format ~select (car rowid) table (rowid-join dbms)))]
+       [else #|row|# (λ [[dbms : DBSystem]] (format ~select (string-join cols ", ") table (rowid-join dbms)))]))))
+
+(define ugly-select.sql : (-> String String Index (Listof String) (Option String) Virtual-Statement)
+  (lambda [table where argn rowid eam]
+    (virtual-statement
+     (λ [[dbms : DBSystem]]
+       (define dbn : Symbol (dbsystem-name dbms))
+       (format "SELECT ~a FROM ~a WHERE ~a;" (or eam (string-join rowid ", ")) table
+               (apply format where (build-list argn (λ [[idx : Index]] ($? dbn idx)))))))))
 
 (define delete-from.sql : (-> String (Listof String) Virtual-Statement)
   (lambda [table rowid]
-    (virtual-statement (λ [[dbms : DBSystem]] (format "DELETE FROM ~a WHERE ~a;" table (string-join=$i rowid " AND " 0))))))
+    (virtual-statement
+     (λ [[dbms : DBSystem]]
+       (format "DELETE FROM ~a WHERE ~a;" table
+               (string-join=$i (dbsystem-name dbms)
+                               rowid " AND " 0))))))

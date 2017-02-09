@@ -16,7 +16,7 @@
 
 (define make-job : (-> (-> Integer) Index (-> (Listof UUPK)))
   (lambda [pk64 fid]
-    (thunk (time (build-list 16 (λ [[seq : Index]]
+    (thunk (time (build-list 8 (λ [[seq : Index]]
                                   (make-uupk #:pk (pk64)
                                              #:type (value-name pk64)
                                              #:fid fid
@@ -39,4 +39,5 @@
     (map do-insert (touch workers))))
 
 (select-uupk :memory:)
+(select-uupk :memory: #:where (list "type = ~a or type = ~a" "uuid:timestamp" "uuid:random"))
 (disconnect :memory:)
