@@ -102,10 +102,10 @@
     (define (rowid-join [dbms : DBSystem]) : String (string-join=$i (dbsystem-name dbms) rowid " AND " 0))
     (virtual-statement
      (case which
-       [(nowhere) (format "SELECT ~a FROM ~a;" (or eam (string-join rowid ", ")) table)]
-       [(byrowid) (λ [[dbms : DBSystem]] (format ~select (or eam (string-join rowid ", ")) table (rowid-join dbms)))]
+       [(nowhere) (format "SELECT ~a FROM ~a;" (or eam (string-join cols ", ")) table)]
+       [(byrowid) (λ [[dbms : DBSystem]] (format ~select (or eam (string-join cols ", ")) table (rowid-join dbms)))]
        [(ckrowid) (λ [[dbms : DBSystem]] (format ~select (car rowid) table (rowid-join dbms)))]
-       [else #|row|# (λ [[dbms : DBSystem]] (format ~select (string-join cols ", ") table (rowid-join dbms)))]))))
+       [else #|not used|# (format "SELECT ~a FROM ~a;" (string-join rowid ", ") table)]))))
 
 (define ugly-select.sql : (-> String String Index (Listof String) (Option String) Virtual-Statement)
   (lambda [table where argn rowid eam]

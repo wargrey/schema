@@ -4,11 +4,20 @@
 
 (require racket/list)
 (require racket/bool)
+(require racket/sequence)
 
 (require typed/db/base)
 
 (require "message.rkt")
 (require "virtual-sql.rkt")
+
+(require/typed "cheat.rkt"
+               [in-query-cols (->* (Connection Statement (U Positive-Integer +inf.0))
+                                   ((Listof SQL-Datum))
+                                   (Sequenceof SQL-Datum))]
+               [in-query-rows (->* (Connection Statement (U Positive-Integer +inf.0))
+                                   ((Listof SQL-Datum))
+                                   (Sequenceof (Listof SQL-Datum)))])
 
 (define do-create-table : (-> (Option Symbol) Symbol (Option Symbol) Connection String (Listof+ String) (Option String)
                               (Listof String) (Listof String) (Listof Boolean) (Listof Boolean) Void)
@@ -39,6 +48,26 @@
       (apply query-exec dbc delete.sql
              (for/list : (Listof SQL-Datum) ([ref (in-list refs)]) (ref record))))))
 
+(define do-select-table : (All (a) (-> Symbol Symbol String (U False (Vectorof SQL-Datum) (Pairof String (Listof SQL-Datum)))
+                                       (Listof+ String) (Option String) (Listof String) (-> SQL-Datum a) (-> (Listof SQL-Datum) a)
+                                       Connection (U Positive-Integer +inf.0) (Sequenceof (U a exn))))
+  (lambda [select-nowhere select-where dbtable where rowid eam cols deserialize mkrow dbc size]
+    (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid eam cols)))
+    (define (mkugly [fmt : String] [_ : (Listof Any)]) : Statement (ugly-select.sql dbtable fmt (length _) rowid eam))
+    (define (row->table [rowid : (Listof SQL-Datum)]) (with-handlers ([exn? (λ [[e : exn]] e)]) (mkrow rowid)))
+    (define (col->table [rowid : SQL-Datum]) (with-handlers ([exn? (λ [[e : exn]] e)]) (deserialize rowid)))
+    (define sql : Statement
+      (cond [(not where) (hash-ref! sqls select-nowhere (mksql 'nowhere))]
+            [(vector? where) (hash-ref! sqls select-where (mksql 'byrowid))]
+            [else (hash-ref! ugly-sqls (cons dbtable (car where)) (λ [] (mkugly (car where) (cdr where))))]))
+    (if (not eam)
+        (cond [(not where) (sequence-map row->table (in-query-rows dbc sql size))]
+              [(vector? where) (sequence-map row->table (in-query-rows dbc sql size (vector->list where)))]
+              [else (sequence-map row->table (in-query-rows dbc sql size (cdr where)))])
+        (cond [(not where) (sequence-map col->table (in-query dbc sql #:fetch size))]
+              [(vector? where) (sequence-map col->table (in-query-cols dbc sql size (vector->list where)))]
+              [else (sequence-map col->table (in-query-cols dbc sql size (cdr where)))]))))
+
 (define do-update-table : (All (a) (-> Symbol Boolean Symbol (Option Symbol) String (Listof+ String) (Option String) (Listof+ String)
                                        Connection (Sequenceof a) (Listof (-> a Any)) (Listof (-> a SQL-Datum)) (-> a SQL-Datum) Void))
   (lambda [func view? table maybe-chpk dbtable rowid eam cols dbc selves refs pkrefs serialize]
@@ -56,50 +85,6 @@
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbsys)))
       (cond [(false? eam) (apply query dbc up.sql (append metrics rowid))]
             [else (apply query dbc up.sql (serialize record) (append metrics rowid))]))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define get-select-sql : (-> Symbol Symbol Symbol Symbol String (U False VectorTop (Pairof String (Listof Any)))
-                             (Listof+ String) (Option String) (Listof String)
-                             (Values Statement Statement))
-  (lambda [select-rowid select-where select-racket select-row dbtable where rowid eam cols]
-    (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid eam cols)))
-    (define (mkugly [fmt : String] [_ : (Listof Any)]) : Statement (ugly-select.sql dbtable fmt (length _) rowid eam))
-    (define sql : Statement
-      (cond [(pair? where) (hash-ref! ugly-sqls (cons dbtable (car where)) (λ [] (mkugly (car where) (cdr where))))]
-            [(and where) (hash-ref! sqls select-where (mksql 'byrowid))]
-            [(and eam) (hash-ref! sqls select-racket (mksql 'nowhere))]
-            [else (hash-ref! sqls select-rowid (mksql 'nowhere))]))
-    (cond [(not eam) (values sql (hash-ref! sqls select-row (mksql 'row)))]
-          [else (values sql sql)])))
-
-(define select-row-from-table : (All (a) (-> Symbol Symbol Connection Statement (Vectorof SQL-Datum)
-                                             (-> Any Boolean : #:+ a) (Listof (-> String Any)) a))
-  (lambda [func table dbc select.sql rowid table-row? guards]
-    (define metrics : (Listof Any)
-      (for/list ([sql (in-vector (apply query-row dbc select.sql (vector->list rowid)))]
-                 [guard (in-list guards)])
-        (sql->racket sql guard)))
-    (cond [(table-row? metrics) metrics]
-          [else (schema-throw [exn:schema 'assertion `((struct . ,table) (record . ,rowid) (got . ,metrics))]
-                              func "maybe the database is penetrated")])))
-
-(define do-select-row : (All (a) (->  Connection Statement (-> (Vectorof SQL-Datum) a)
-                                     (U False (Vectorof SQL-Datum) (Pairof String (Listof SQL-Datum)))
-                                     (Sequenceof (U a exn))))
-  (lambda [dbc sql select where]
-    (define (subselect [rowid : (Vectorof SQL-Datum)]) (with-handlers ([exn? (λ [[e : exn]] e)]) (select rowid)))
-    (cond [(not where) (in-list (map select (query-rows dbc sql)))]
-          [(pair? where) (in-list (map select (apply query-rows dbc sql (cdr where))))]
-          [else (in-value (select where))])))
-
-(define do-select-racket : (All (a) (->  Connection Statement (-> (Vectorof SQL-Datum) a)
-                                         (U False (Vectorof SQL-Datum) (Pairof String (Listof SQL-Datum)))
-                                         (Sequenceof (U a exn))))
-  (lambda [dbc sql select where]
-    (define (subselect [rowid : (Vectorof SQL-Datum)]) (with-handlers ([exn? (λ [[e : exn]] e)]) (select rowid)))
-    (cond [(not where) (in-list (map select (query-rows dbc sql)))]
-          [(pair? where) (in-list (map select (apply query-rows dbc sql (cdr where))))]
-          [else (in-value (select where))])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define ugly-sqls : (HashTable Any Statement) (make-hash))
@@ -127,6 +112,13 @@
     (when (void? defval) (error func "missing value for field '~a'" field))
     defval))
 
+(define check-selected-row : (All (a) (-> Symbol Symbol (-> Any Boolean : #:+ a) (Listof SQL-Datum) (Listof (-> String Any)) a))
+  (lambda [func table table-row? fields guards]
+    (define metrics : (Listof Any) (map sql->racket fields guards))
+    (cond [(table-row? metrics) metrics]
+          [else (schema-throw [exn:schema 'assertion `((struct . ,table) (got . ,metrics))]
+                              func "maybe the database is penetrated")])))
+
 (define check-row : (All (a) (-> Symbol (Listof Any) (-> Any Boolean : #:+ a) String Any * a))
   (lambda [func metrics table-row? errfmt . errmsg]
     (cond [(table-row? metrics) metrics]
@@ -138,7 +130,7 @@
           [(not self) (check-default-value func field (mkdefval))]
           [else (table-field self)])))
 
-(define record-ref : (All (a) (-> Symbol HashTableTop (Listof Symbol) (Listof (-> Any)) (-> Any Boolean : #:+ a) a))
+(define dict->record : (All (a) (-> Symbol HashTableTop (Listof Symbol) (Listof (-> Any)) (-> Any Boolean : #:+ a) a))
   (lambda [func src fields mkdefval table-row?]
     (define metrics : (Listof Any)
       (for/list ([field (in-list fields)]
