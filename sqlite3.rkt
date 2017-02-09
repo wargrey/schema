@@ -1,9 +1,8 @@
-#lang digimon
+#lang digimon/sugar
 
 (provide (all-defined-out))
 
-(require digimon/system)
-
+(require racket/file)
 (require typed/db/base)
 
 (require "digitama/schema.rkt")
@@ -29,9 +28,7 @@
   (lambda [db]
     ; TODO: make the db as a application file format
     (unless (file-exists? db)
-      (define-values (base name dir?) (split-path db))
-      (cond [(path? base) (make-directory* base)]
-            [else (void '|Do nothing with an immediately relative path or a root directory|)])
+      (make-parent-directory* db)
       (call-with-output-file* db void))))
 
 (define sqlite3-pragma : (->* (Connection Symbol) ((U Pragma-Datum Void) #:schema Symbol) (U Simple-Result Rows-Result))
@@ -54,8 +51,4 @@
 
 (define sqlite3-version : (-> Connection Integer)
   (lambda [dbc]
-    #;(define version (query-maybe-value dbc "select sqlite_version();"))
-    #;(for/fold ([V : Integer 0])
-                ([v (in-list (filter-map string->number (regexp-match* #px"\\d+" (~a version))))])
-        (if (exact-integer? v) (+ (* V 1000) v) 0))
     (sqlite3_libversion_number)))
