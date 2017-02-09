@@ -4,6 +4,7 @@
 
 (require "../main.rkt")
 (require "../sqlite3.rkt")
+(require "../digitama/shadow.rkt")
 
 (define types : (Listof Symbol) '(table index view trigger))
 (define plan : Index (length types))
@@ -47,7 +48,7 @@
     (cond [(< idx (quotient plan 2)) (delete-master :memory: record)]
           [(< idx (* (quotient plan 4) 3)) (update-master :memory: (remake-master record))]
           [else (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
-                  (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (pk64:random launch-time))))])))
+                  (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (pk64:random))))])))
 
 (for/list : (Listof Any) ([m (in-list masters)])
   (define uuids : (List Integer String) (list (master-uuid m) (master-name m)))
@@ -64,3 +65,5 @@
 (values src (remake-master src #:name "remake:okay") (master->hash src))
 (with-handlers ([exn? (λ [e] e)]) (remake-master #false))
 (with-handlers ([exn? (λ [e] e)]) (hash->master (make-hasheq)))
+
+sqls

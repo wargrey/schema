@@ -24,7 +24,7 @@
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...]) ...]
                       [(column table-column DBType column-guard column-not-null column-unique) ...]
                       [table? table-row? msg:schema:table make-table-message table->hash hash->table
-                              force-create force-insert delete-record select-rowid select-where check-record]
+                              force-create force-insert select-rowid select-where check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
                            [tablename (syntax-e #'table)]
@@ -39,7 +39,7 @@
                                                (if pk-info (cons pk-info sdiwor) sdiwor))])))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif) (reverse snmuloc)
                              (for/list ([fmt (in-list (list "~a?" "~a-row?" "msg:schema:~a" "make-~a-message" "~a->hash" "hash->~a"
-                                                            "create-~a-if-not-exists" "insert-~a-or-replace" "delete-from-~a-by-rowid"
+                                                            "create-~a-if-not-exists" "insert-~a-or-replace"
                                                             "select-~a-rowid" "select-~a-where" "check-~a-rowid"))])
                                (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'in 'select 'update))])
@@ -61,14 +61,14 @@
 
                 (define (make-table #:unsafe? [unsafe? : Boolean #false] mkargs ...) : Table
                   (when (not unsafe?)
-                    (check-constraint 'make-table '(field ...) contract-literals
+                    (check-constraint 'make-table 'table '(field ...) contract-literals
                                       (list field-contract ... record-contract) field ...))
                   (unsafe-table field ...))
 
                 (define (remake-table [self : (Option Table)] #:unsafe? [unsafe? : Boolean #false] reargs ...) : Table
                   (let ([field (field-value 'remake-table 'field self table-field field (thunk (list defval ...)))] ...)
                     (when (not unsafe?)
-                      (check-constraint 'remake-table '(field ...) contract-literals
+                      (check-constraint 'remake-table 'table '(field ...) contract-literals
                                         (list field-contract ... record-contract) field ...))
                     (unsafe-table field ...)))
 
@@ -81,7 +81,7 @@
                   (define record (record-ref 'hash->table src '(field ...) (list (thunk (list defval ...)) ...) table-row?))
                   (cond [(and unsafe?) (apply unsafe-table record)]
                         [else (match-let ([(list field ...) record])
-                                (check-constraint 'hash->table '(field ...) contract-literals
+                                (check-constraint 'hash->table 'table '(field ...) contract-literals
                                                   (list field-contract ... record-contract) field ...)
                                 (unsafe-table field ...))]))
                 
@@ -97,18 +97,18 @@
                            (msg:schema:table level message info 'table maniplation occurrences)))]))
                 
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
-                  (do-create-table (and view? 'create-table) 'create-table 'force-create
-                                   dbc silent? dbtable '(dbrowid ...) eam '(column ...) '(DBType ...)
+                  (do-create-table (and view? 'create-table) 'create-table (and silent? 'force-create)
+                                   dbc dbtable '(dbrowid ...) eam '(column ...) '(DBType ...)
                                    '(column-not-null ...) '(column-unique ...)))
 
                 (define (insert-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:or-replace? [replace? : Boolean #false]) : Void
-                  (do-insert-table (and view? 'insert-table) 'insert-table 'force-insert replace? dbtable eam '(column ...)
+                  (do-insert-table (and view? 'insert-table) 'insert-table (and replace? 'force-insert) dbtable eam '(column ...)
                                    dbc (if (table? selves) (in-value selves) (in-list selves))
                                    (list table-column ...) serialize))
                 
                 (define (delete-table [dbc : Connection] [selves : (U Table (Listof Table))]) : Void
-                  (do-delete-from-table (and view? 'delete-table) 'table 'delete-record dbtable '(dbrowid ...)
+                  (do-delete-from-table 'delete-table view? dbtable '(dbrowid ...)
                                         dbc (if (table? selves) (in-value selves) (in-list selves))
                                         (list table-rowid ...)))
 
@@ -117,14 +117,14 @@
                                   #:where [where : (Option RowidType) #false]
                                   #:fetch [size : (U Positive-Integer +inf.0) 1]) : (Sequenceof (U Table exn))
                   (define-values (select.sql select-row.sql)
-                    (get-select-sql 'select-rowid 'select-where 'in-table 'select-table
-                                    dbtable where '(dbrowid ...) eam '(column ...)))
+                    (get-select-sql 'select-rowid (and where 'select-where) 'in-table 'select-table
+                                    dbtable '(dbrowid ...) eam '(column ...)))
                   (define (read-table [sexp : SQL-Datum]) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
                       (deserialize sexp)))
                   (define (select-by-rowid [rowid : (Vectorof SQL-Datum)]) : (U Table exn)
                     (with-handlers ([exn? (λ [[e : exn]] e)])
-                      (apply unsafe-table (select-row-from-table 'select-table dbc select-row.sql rowid
+                      (apply unsafe-table (select-row-from-table 'select-table 'table dbc select-row.sql rowid
                                                                  table-row? (list column-guard ...)))))
                   (if (not eam)
                       (cond [(not where) (in-list (map select-by-rowid (query-rows dbc select.sql)))]
@@ -135,7 +135,7 @@
 
                 (define (update-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:check-first? [check? : Boolean #true]) : Void
-                  (do-update-table 'table view? 'update-table 'check-record check? dbtable '(dbrowid ...) eam '(column ...)
+                  (do-update-table 'update-table view? 'table (and check? 'check-record) dbtable '(dbrowid ...) eam '(column ...)
                                    dbc (if (table? selves) (in-value selves) (in-list selves))
                                    (list table-column ...) (list table-rowid ...) serialize))))]))
 

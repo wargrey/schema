@@ -35,7 +35,7 @@
                  seq)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define create-table.sql : (-> Boolean String (Listof+ String) (Option String) (Listof String) (Listof String)
+(define create-table.sql : (-> Any String (Listof+ String) (Option String) (Listof String) (Listof String)
                                (Listof Boolean) (Listof Boolean) Virtual-Statement)
   (lambda [silent? table rowid eam cols types not-nulls uniques]
     (virtual-statement
@@ -60,7 +60,7 @@
                   (if (and without-rowid? (sqlite3-support-without-rowid?)) " WITHOUT ROWID" ""))]
          [else (throw exn:fail:unsupported 'create-table.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
-(define insert-into.sql : (-> Boolean String (Option String) (Listof String) Virtual-Statement)
+(define insert-into.sql : (-> Any String (Option String) (Listof String) Virtual-Statement)
   (lambda [replace? table eam cols]
     (virtual-statement
      (λ [[dbms : DBSystem]]

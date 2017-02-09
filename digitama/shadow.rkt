@@ -10,75 +10,74 @@
 (require "message.rkt")
 (require "virtual-sql.rkt")
 
-(define do-create-table : (-> (Option Symbol) Symbol Symbol
-                              Connection Boolean String (Listof+ String) (Option String)
+(define do-create-table : (-> (Option Symbol) Symbol (Option Symbol) Connection String (Listof+ String) (Option String)
                               (Listof String) (Listof String) (Listof Boolean) (Listof Boolean) Void)
-  (lambda [func create force-create dbc silent? dbtable rowid eam cols types not-nulls uniques]
+  (lambda [func create maybe-force dbc dbtable rowid eam cols types not-nulls uniques]
     (unless (not func) (throw exn:fail:unsupported func "cannot create a temporary view"))
-    (define (mksql) : Virtual-Statement (create-table.sql silent? dbtable rowid eam cols types not-nulls uniques))
-    (query-exec dbc (sql-ref! (if silent? force-create create) mksql))))
+    (define (mksql) : Virtual-Statement (create-table.sql maybe-force dbtable rowid eam cols types not-nulls uniques))
+    (query-exec dbc (sql-ref! (or maybe-force create) mksql))))
 
-(define do-insert-table : (All (a) (-> (Option Symbol) Symbol Symbol Boolean String (Option String) (Listof String)
+(define do-insert-table : (All (a) (-> (Option Symbol) Symbol (Option Symbol) String (Option String) (Listof String)
                                        Connection (Sequenceof a) (Listof (-> a Any)) (-> a SQL-Datum) Void))
-  (lambda [func insert replace replace? dbtable eam cols dbc selves refs serialize]
-    (define (mksql) : Virtual-Statement (insert-into.sql replace? dbtable eam cols))
+  (lambda [func insert maybe-replace dbtable eam cols dbc selves refs serialize]
+    (define (mksql) : Virtual-Statement (insert-into.sql maybe-replace dbtable eam cols))
     (unless (not func) (throw exn:fail:unsupported func "cannot insert records into a temporary view"))
-    (define insert.sql : Statement (sql-ref! (if replace? replace insert) mksql))
+    (define insert.sql : Statement (sql-ref! (or maybe-replace insert) mksql))
     (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
     (for ([record : a selves])
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbsys)))
       (cond [(false? eam) (apply query-exec dbc insert.sql metrics)]
             [else (apply query-exec dbc insert.sql (serialize record) metrics)]))))
 
-(define do-delete-from-table : (All (a) (-> (Option Symbol) Symbol Symbol String (Listof+ String)
+(define do-delete-from-table : (All (a) (-> Symbol Boolean String (Listof+ String)
                                             Connection (Sequenceof a) (Listof (-> a SQL-Datum)) Void))
-  (lambda [func table delete-record dbtable rowid dbc selves refs]
+  (lambda [func view? dbtable rowid dbc selves refs]
     (define (mksql) : Virtual-Statement (delete-from.sql dbtable rowid))
-    (unless (not func) (throw exn:fail:unsupported func "cannot delete records from a temporary view"))
-    (define delete.sql : Statement (sql-ref! delete-record mksql))
+    (when view? (throw exn:fail:unsupported func "cannot delete records from a temporary view"))
+    (define delete.sql : Statement (sql-ref! func mksql))
     (for ([record : a selves])
       (apply query-exec dbc delete.sql
              (for/list : (Listof SQL-Datum) ([ref (in-list refs)]) (ref record))))))
 
-(define do-update-table : (All (a) (-> Symbol Boolean Symbol Symbol Boolean String (Listof+ String) (Option String) (Listof+ String)
+(define do-update-table : (All (a) (-> Symbol Boolean Symbol (Option Symbol) String (Listof+ String) (Option String) (Listof+ String)
                                        Connection (Sequenceof a) (Listof (-> a Any)) (Listof (-> a SQL-Datum)) (-> a SQL-Datum) Void))
-  (lambda [table view? func chpk ensure? dbtable rowid eam cols dbc selves refs pkrefs serialize]
+  (lambda [func view? table maybe-chpk dbtable rowid eam cols dbc selves refs pkrefs serialize]
     (when view? (throw exn:fail:unsupported func "cannot update records of a temporary view"))
     (define (mkup) : Virtual-Statement (update.sql dbtable rowid eam cols))
     (define (mkck) : Virtual-Statement (simple-select.sql 'ckrowid dbtable rowid eam cols))
     (define up.sql : Statement (sql-ref! func mkup))
-    (define ck.sql : Statement (if ensure? (sql-ref! chpk mkck) up.sql))
+    (define ck.sql : Statement (if maybe-chpk (sql-ref! maybe-chpk mkck) up.sql))
     (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
     (for ([record : a selves])
       (define rowid : (Listof SQL-Datum) (for/list ([ref (in-list pkrefs)]) (ref record)))
-      (when (and ensure? (false? (apply query-maybe-value dbc ck.sql rowid)))
-        (schema-throw [exn:schema 'norow `((struct . table) (record . ,(list->vector rowid)))]
+      (when (and maybe-chpk (false? (apply query-maybe-value dbc ck.sql rowid)))
+        (schema-throw [exn:schema 'norow `((struct . ,table) (record . ,(list->vector rowid)))]
                       func "no such record found in the table"))
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbsys)))
       (cond [(false? eam) (apply query dbc up.sql (append metrics rowid))]
             [else (apply query dbc up.sql (serialize record) (append metrics rowid))]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define get-select-sql : (-> Symbol Symbol Symbol Symbol String Any (Listof+ String) (Option String) (Listof String)
+(define get-select-sql : (-> Symbol (Option Symbol) Symbol Symbol String (Listof+ String) (Option String) (Listof String)
                              (Values Statement Statement))
-  (lambda [select-rowid select-where select-racket select-row dbtable where? rowid eam cols]
+  (lambda [select-rowid maybe-where select-racket select-row dbtable rowid eam cols]
     (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid eam cols)))
     (define sql : Statement
-      (cond [(and where?) (sql-ref! select-where (mksql 'byrowid))]
+      (cond [(and maybe-where) (sql-ref! maybe-where (mksql 'byrowid))]
             [(and eam) (sql-ref! select-racket (mksql 'nowhere))]
             [else (sql-ref! select-rowid (mksql 'nowhere))]))
     (cond [(not eam) (values sql (sql-ref! select-row (mksql 'row)))]
           [else (values sql sql)])))
 
-(define select-row-from-table : (All (a) (-> Symbol Connection Statement (Vectorof SQL-Datum)
+(define select-row-from-table : (All (a) (-> Symbol Symbol Connection Statement (Vectorof SQL-Datum)
                                              (-> Any Boolean : #:+ a) (Listof (-> String Any)) a))
-  (lambda [func dbc select.sql rowid table-row? guards]
+  (lambda [func table dbc select.sql rowid table-row? guards]
     (define metrics : (Listof Any)
       (for/list ([sql (in-vector (apply query-row dbc select.sql (vector->list rowid)))]
                  [guard (in-list guards)])
         (sql->racket sql guard)))
     (cond [(table-row? metrics) metrics]
-          [else (schema-throw [exn:schema 'assertion `((struct . table) (record . ,rowid) (got . ,metrics))]
+          [else (schema-throw [exn:schema 'assertion `((struct . ,table) (record . ,rowid) (got . ,metrics))]
                               func "maybe the database is penetrated")])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -87,8 +86,8 @@
   (lambda [which mksql]
     (hash-ref! sqls which mksql)))
 
-(define check-constraint : (-> Symbol (Listof Symbol) (Listof Any) (Listof Any) Any * Void)
-  (lambda [func fields literals contracts  . givens]
+(define check-constraint : (-> Symbol Symbol (Listof Symbol) (Listof Any) (Listof Any) Any * Void)
+  (lambda [func table fields literals contracts  . givens]
     (when (memq #false contracts)
       (define expected : (Listof Any)
         (for/list ([result (in-list contracts)]
@@ -101,7 +100,7 @@
                      [v (in-list givens)]
                      #:when (memq f ?fields))
             (values f v)))
-      (schema-throw [exn:schema 'contract `((struct . table) (expected . ,expected) (given . ,given))]
+      (schema-throw [exn:schema 'contract `((struct . ,table) (expected . ,expected) (given . ,given))]
                     func "constraint violation"))))
 
 (define check-default-value : (All (a) (-> Symbol Symbol (Listof a) a))

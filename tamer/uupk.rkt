@@ -9,7 +9,8 @@
     ([pk     : Integer       #:default (pk64:timestamp)]
      [type   : Symbol        #:not-null]
      [fid    : Index         #:not-null]
-     [seq    : Index         #:not-null])))
+     [seq    : Index         #:not-null]
+     [mem    : Integer       #:not-null])))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 
@@ -19,13 +20,13 @@
                                   (make-uupk #:pk (pk64)
                                              #:type (value-name pk64)
                                              #:fid fid
-                                             #:seq seq)))))))
+                                             #:seq seq
+                                             #:mem (current-memory-use))))))))
 
 (define do-insert : (-> UUPK Void)
   (lambda [record]
     (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (cons record (exn:fail:sql-info e)) /dev/stderr))])
       (insert-uupk :memory: record))))
-
 
 (create-uupk :memory:)
 

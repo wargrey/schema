@@ -37,7 +37,7 @@
     (define version : Byte #b10)
     (define ts32 : Integer (bitwise-and (integer-bytes->integer (crypto-random-bytes 4) #false #true) #x7FFF))
     (define urnd16 : Integer (integer-bytes->integer (crypto-random-bytes 2) #false #true))
-    (define clock14 : Integer (random #b11111111111111))
+    (define clock14 : Integer (random (fx+ #b11111111111111 1)))
     (bitwise-ior (arithmetic-shift ts32 32)
                  (arithmetic-shift version 30)
                  (fxlshift urnd16 14)
