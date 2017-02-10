@@ -48,14 +48,17 @@
       (apply query-exec dbc delete.sql
              (for/list : (Listof SQL-Datum) ([ref (in-list refs)]) (ref record))))))
 
-(define do-select-table : (All (a) (-> Symbol Symbol String (U False (Vectorof SQL-Datum) (Pairof String (Listof SQL-Datum)))
+(define do-select-table : (All (a) (-> Symbol Symbol String (U False (Vectorof SQL-Datum) (Pairof String (Listof Any)))
                                        (Listof+ String) (Option String) (Listof String) (-> SQL-Datum a) (-> (Listof SQL-Datum) a)
                                        Connection (U Positive-Integer +inf.0) (Sequenceof (U a exn))))
   (lambda [select-nowhere select-where dbtable where rowid eam cols deserialize mkrow dbc size]
     (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid eam cols)))
-    (define (mkugly [fmt : String] [_ : (Listof Any)]) : Statement (ugly-select.sql dbtable fmt (length _) rowid eam))
+    (define (mkugly [fmt : String] [_ : (Listof Any)]) : Statement (ugly-select.sql dbtable fmt (length _) eam cols))
     (define (row->table [raw : (Listof SQL-Datum)]) (with-handlers ([exn? (λ [[e : exn]] e)]) (mkrow raw)))
     (define (col->table [raw : SQL-Datum]) (with-handlers ([exn? (λ [[e : exn]] e)]) (deserialize raw)))
+    (define (argl-map [data : (Listof Any)]) : (Listof SQL-Datum)
+      (let ([dbn (dbsystem-name (connection-dbsystem dbc))])
+        (for/list ([r (in-list data)]) (racket->sql r dbn))))
     (define sql : Statement
       (cond [(not where) (hash-ref! sqls select-nowhere (mksql 'nowhere))]
             [(vector? where) (hash-ref! sqls select-where (mksql 'byrowid))]
@@ -63,10 +66,10 @@
     (if (not eam)
         (cond [(not where) (sequence-map row->table (in-query-rows dbc sql size))]
               [(vector? where) (sequence-map row->table (in-query-rows dbc sql size (vector->list where)))]
-              [else (sequence-map row->table (in-query-rows dbc sql size (cdr where)))])
+              [else (sequence-map row->table (in-query-rows dbc sql size (argl-map (cdr where))))])
         (cond [(not where) (sequence-map col->table (in-query dbc sql #:fetch size))]
               [(vector? where) (sequence-map col->table (in-query-cols dbc sql size (vector->list where)))]
-              [else (sequence-map col->table (in-query-cols dbc sql size (cdr where)))]))))
+              [else (sequence-map col->table (in-query-cols dbc sql size (argl-map (cdr where))))]))))
 
 (define do-update-table : (All (a) (-> Symbol Boolean Symbol (Option Symbol) String (Listof+ String) (Option String) (Listof+ String)
                                        Connection (Sequenceof a) (Listof (-> a Any)) (Listof (-> a SQL-Datum)) (-> a SQL-Datum) Void))

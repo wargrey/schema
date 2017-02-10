@@ -39,5 +39,6 @@
     (map do-insert (touch workers))))
 
 (select-uupk :memory:)
-(select-uupk :memory: #:where (list "type = ~a or type = ~a" "uuid:timestamp" "uuid:random"))
+(select-uupk :memory: #:where (list "pk <  ~a" 100000000000000)) ; timestamp PK will not larger this number.
+(select-uupk :memory: #:where (list "pk >= ~a and type = ~a" 100000000000000 'pk64:random))
 (disconnect :memory:)

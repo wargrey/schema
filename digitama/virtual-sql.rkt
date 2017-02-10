@@ -107,12 +107,12 @@
        [(ckrowid) (λ [[dbms : DBSystem]] (format ~select (car rowid) table (rowid-join dbms)))]
        [else #|not used|# (format "SELECT ~a FROM ~a;" (string-join rowid ", ") table)]))))
 
-(define ugly-select.sql : (-> String String Index (Listof String) (Option String) Virtual-Statement)
-  (lambda [table where argn rowid eam]
+(define ugly-select.sql : (-> String String Index (Option String) (Listof String) Virtual-Statement)
+  (lambda [table where argn eam cols]
     (virtual-statement
      (λ [[dbms : DBSystem]]
        (define dbn : Symbol (dbsystem-name dbms))
-       (format "SELECT ~a FROM ~a WHERE ~a;" (or eam (string-join rowid ", ")) table
+       (format "SELECT ~a FROM ~a WHERE ~a;" (or eam (string-join cols ", ")) table
                (apply format where (build-list argn (λ [[idx : Index]] ($? dbn idx)))))))))
 
 (define delete-from.sql : (-> String (Listof String) Virtual-Statement)

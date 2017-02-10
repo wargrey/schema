@@ -120,7 +120,7 @@
 
                 (define-syntax (select-table stx) (syntax-case stx [] [(_ argl ___) #'(sequence->list (in-table argl ___))]))
                 (define (in-table [dbc : Connection]
-                                  #:where [where : (U RowidType (Pairof String (Listof SQL-Datum)) False) #false]
+                                  #:where [where : (U RowidType (Pairof String (Listof Any)) False) #false]
                                   #:fetch [size : (U Positive-Integer +inf.0) +inf.0]) : (Sequenceof (U Table exn))
                   (define (read-row [fields : (Listof SQL-Datum)]) : Table
                     (apply unsafe-table (check-selected-row 'select-table 'table table-row? fields (list column-guard ...))))
