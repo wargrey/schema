@@ -21,9 +21,9 @@
                     [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
                     [eam (if (attribute entity-attribute-mode) (id->sql #'entity-attribute-mode) #'#false)]
                     [([view? table-rowid ...]
-                      [(:field table-field field-contract FieldType MaybeNull on-update [defval ...]) ...]
+                      [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples) ...]
                       [(column table-column DBType column-guard column-not-null column-unique) ...]
-                      [table? table-row? table-rowid-ref msg:schema:table make-table-message table->hash hash->table
+                      [table? table-row? table-rowid-ref msg:schema:table make-table-message table->hash hash->table table-examples
                               force-create force-insert check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
@@ -38,9 +38,9 @@
                                                (cons column-info snmuloc)
                                                (if pk-info (cons pk-info sdiwor) sdiwor))])))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif) (reverse snmuloc)
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "~a-rowid" "msg:schema:~a" "make-~a-message"
-                                                            "~a->hash" "hash->~a" "create-~a-if-not-exists" "insert-~a-or-replace"
-                                                            "check-~a-rowid"))])
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "~a-rowid" "msg:schema:~a"
+                                                            "make-~a-message" "~a->hash" "hash->~a" "~a-examples"
+                                                            "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
                                (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'in 'select 'update))])
                                (format-id #'table "~a-~a" prefix tablename))))]
@@ -90,6 +90,12 @@
                                 (check-constraint 'hash->table 'table '(field ...) contract-literals
                                                   (list field-contract ... record-contract) field ...)
                                 (unsafe-table field ...))]))
+
+                (: table-examples (->* () ((Option Symbol)) (Listof Any)))
+                (define (table-examples [fname #false]) : (Listof Any)
+                  (case fname
+                    [(field) (check-example field-examples (thunk (list defval ...)))] ...
+                    [else (map table-examples '(field ...))]))
                 
                 (define make-table-message : (case-> [Symbol -> (-> (U Table (Listof Table) exn) Any * Schema-Message)]
                                                      [Symbol (U Table (Listof Table) exn) Any * -> Schema-Message])

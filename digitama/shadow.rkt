@@ -122,6 +122,12 @@
           [else (schema-throw [exn:schema 'assertion `((struct . ,table) (got . ,metrics))]
                               func "maybe the database is penetrated")])))
 
+(define check-example : (-> Any (-> (Listof Any)) (Listof Any))
+  (lambda [example mkdefval]
+    (cond [(null? example) (mkdefval)]
+          [(list? example) example]
+          [else (list example)])))
+
 (define check-row : (All (a) (-> Symbol (Listof Any) (-> Any Boolean : #:+ a) String Any * a))
   (lambda [func metrics table-row? errfmt . errmsg]
     (cond [(table-row? metrics) metrics]

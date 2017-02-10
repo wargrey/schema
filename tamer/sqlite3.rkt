@@ -14,7 +14,7 @@
 (define-schema SchemaTamer
   (define-table master #:as Master #:with [uuid name] racket
     ([uuid     : Integer       #:default (pk64:timestamp launch-time)]
-     [type     : Symbol        #:default 'table #:not-null]
+     [type     : Symbol        #:default 'table #:not-null #:% 'table]
      [name     : String        #:not-null #:unique #:check (string-contains? name ":")]
      [ctime    : Fixnum        #:default (current-milliseconds)]
      [mtime    : Fixnum        #:auto (current-milliseconds)])
@@ -67,3 +67,4 @@
 (with-handlers ([exn? (λ [e] e)]) (hash->master (make-hasheq)))
 
 sqls
+(master-examples)

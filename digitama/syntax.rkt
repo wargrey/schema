@@ -21,7 +21,7 @@
                         (~optional (~seq (~and #:not-null not-null)) #:name "#:not-null")
                         (~optional (~seq (~and #:unique unique)) #:name "#:unique")
                         (~optional (~seq (~and #:hide hide)) #:name "#:hide")
-                        (~optional (~seq #:% comment) #:name "#:%")) ...)
+                        (~optional (~seq #:% comments) #:name "#:%")) ...)
        (define-values (DataType SQLType)
          (syntax-parse #'Type
            [(Racket #:as SQL) (values #'Racket (id->sql #'SQL 'raw))]
@@ -32,16 +32,17 @@
        (values (and primary? table-field)
                (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
                      table-field
-                     (if (attribute contract) #'contract #'#true)
+                     (or (attribute contract) #'#true)
                      DataType #|Cannot union the DataType and False here since the type may not builtin|#
                      (if (or primary? (attribute not-null)) DataType #'False)
-                     (if (attribute generate) #'generate #'(void))
+                     (or (attribute generate) #'(void))
                      (cond [(attribute defval) #'(defval)]
                            [(attribute generate) #'(generate)]
                            [(or primary? not-null?) #'()]
                            [else (syntax-case DataType [Listof]
                                    [(Listof _) #'(null)]
-                                   [_ #'(#false)])]))
+                                   [_ #'(#false)])])
+                     (or (attribute comments) #'null))
                (unless (and eam? (not primary?) (attribute hide))
                  (list (id->sql #'field)
                        table-field
