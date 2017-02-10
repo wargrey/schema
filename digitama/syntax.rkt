@@ -13,14 +13,13 @@
 (require (for-syntax "normalize.rkt"))
 
 (begin-for-syntax 
-  (define (parse-field-definition tablename rowids eam? stx)
+  (define (parse-field-definition tablename rowids stx)
     (syntax-parse stx
       [(field Type (~or (~optional (~seq #:check contract:expr) #:name "#:check")
                         (~optional (~or (~seq #:default defval) (~seq #:auto generate)) #:name "#:default or #:auto")
                         (~optional (~seq #:guard guard) #:name "#:guard")
                         (~optional (~seq (~and #:not-null not-null)) #:name "#:not-null")
                         (~optional (~seq (~and #:unique unique)) #:name "#:unique")
-                        (~optional (~seq (~and #:hide hide)) #:name "#:hide")
                         (~optional (~seq #:% comments) #:name "#:%")) ...)
        (define-values (DataType SQLType)
          (syntax-parse #'Type
@@ -42,18 +41,16 @@
                            [else (syntax-case DataType [Listof]
                                    [(Listof _) #'(null)]
                                    [_ #'(#false)])])
-                     (or (attribute comments) #'null))
-               (unless (and eam? (not primary?) (attribute hide))
-                 (list (id->sql #'field)
-                       table-field
-                       SQLType
-                       (or (attribute guard)
-                           (syntax-case DataType [String Symbol]
-                             [String #'values]
-                             [Symbol #'string->symbol]
-                             [_ #'(λ [[sql : String]] (call-with-input-string sql read))]))
-                       (and not-null? #'#true)
-                       (and (attribute unique) #'#true))))]))
+                     (or (attribute comments) #'null)
+                     (id->sql #'field)
+                     SQLType
+                     (or (attribute guard)
+                         (syntax-case DataType [String Symbol]
+                           [String #'values]
+                           [Symbol #'string->symbol]
+                           [_ #'(λ [[sql : String]] (call-with-input-string sql read))]))
+                     (and not-null? #'#true)
+                     (and (attribute unique) #'#true)))]))
 
   (define (parse-table-name stx)
     (syntax-parse stx

@@ -12,19 +12,17 @@
 (define launch-time : Integer (utc-seconds 2016 12 10 04 44 37))
 
 (define-schema SchemaTamer
-  (define-table master #:as Master #:with [uuid name] racket
+  (define-table master #:as Master #:with [uuid name]
     ([uuid     : Integer       #:default (pk64:timestamp launch-time)]
      [type     : Symbol        #:default 'table #:not-null #:% 'table]
      [name     : String        #:not-null #:unique #:check (string-contains? name ":")]
      [ctime    : Fixnum        #:default (current-milliseconds)]
-     [mtime    : Fixnum        #:auto (current-milliseconds)])
-    #:serialize (λ [[raw : Master]] (tee (~s (master->hash raw #:skip-null? #false))))
-    #:deserialize (λ [[raw : SQL-Datum]] : Master (hash->master (read:+? raw hash?) #:unsafe? #true))))
+     [mtime    : Fixnum        #:auto (current-milliseconds)])))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 (sqlite3-version :memory:)
 
-(with-handlers ([exn? (λ [[e : exn]] (make-schema-message struct:sqlite-master 'create e))])
+(with-handlers ([exn? (λ [[e : exn]] (pretty-write (make-schema-message struct:sqlite-master 'create e) /dev/stderr))])
   (create-sqlite-master :memory:))
 
 (create-master :memory:)
@@ -42,6 +40,8 @@
 (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
   (insert-master :memory: masters)
   (insert-master :memory: masters))
+
+(select-master :memory:)
 
 (for ([record (in-master :memory:)] [idx (in-naturals)])
   (when (master? record)

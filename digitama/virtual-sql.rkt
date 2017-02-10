@@ -42,9 +42,9 @@
                  seq)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define create-table.sql : (-> Any String (Listof+ String) (Option String) (Listof String) (Listof String)
+(define create-table.sql : (-> Any String (Listof+ String) (Listof String) (Listof String)
                                (Listof Boolean) (Listof Boolean) Virtual-Statement)
-  (lambda [silent? table rowid eam cols types not-nulls uniques]
+  (lambda [silent? table rowid cols types not-nulls uniques]
     (virtual-statement
      (λ [[dbms : DBSystem]]
        (define without-rowid? : Boolean #false)
@@ -59,60 +59,58 @@
                [else name+type]))
        (case (dbsystem-name dbms)
          [(sqlite3)
-          (format "CREATE ~a ~a (~a~a~a)~a;"
+          (format "CREATE ~a ~a (~a~a)~a;"
                   (if silent? "TABLE IF NOT EXISTS" "TABLE") table
                   (string-join (map ++++ cols types not-nulls uniques) ", ")
-                  (if (false? eam) "" (format ", ~a BLOB NOT NULL" eam))
                   (if single-pk "" (format ", PRIMARY KEY (~a)" (string-join rowid ", ")))
                   (if (and without-rowid? (sqlite3-support-without-rowid?)) " WITHOUT ROWID" ""))]
          [else (throw exn:fail:unsupported 'create-table.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
-(define insert-into.sql : (-> Any String (Option String) (Listof String) Virtual-Statement)
-  (lambda [replace? table eam cols]
+(define insert-into.sql : (-> Any String (Listof String) Virtual-Statement)
+  (lambda [replace? table cols]
     (virtual-statement
      (λ [[dbms : DBSystem]]
        (case (dbsystem-name dbms)
          [(sqlite3)
           (define-values (snmuloc seulva$)
             (for/fold ([snmuloc : (Listof String) null] [seulva$ : (Listof String) null])
-                      ([col (in-list (if (string? eam) cols (cdr cols)))]
+                      ([col (in-list (cdr cols))]
                        [idx (in-naturals 2)])
               (values (cons col (cons ", " snmuloc))
                       (cons (number->string idx) (cons ", $" seulva$)))))
-          (format "INSERT ~a ~a (~a~a) VALUES ($1~a);" (if replace? "OR REPLACE INTO" "INTO") table
-                  (if (string? eam) eam (car cols)) ; $1 is the place for serialized value if present.
+          (format "INSERT ~a ~a (~a~a) VALUES ($1~a);" (if replace? "OR REPLACE INTO" "INTO") table (car cols)
                   (apply string-append (reverse snmuloc))
                   (apply string-append (reverse seulva$)))]
          [else (throw exn:fail:unsupported 'insert-into.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
-(define update.sql : (-> String (Listof+ String) (Option String) (Listof String) Virtual-Statement)
-  (lambda [table rowid eam cols]
+(define update.sql : (-> String (Listof+ String) (Listof String) Virtual-Statement)
+  (lambda [table rowid cols]
     (virtual-statement
      (λ [[dbms : DBSystem]]
        (case (dbsystem-name dbms)
          [(sqlite3)
           (format "UPDATE ~a SET ~a WHERE ~a;" table
-                  (string-join=$i 'sqlite3 (if eam (cons eam cols) cols) ", " (length rowid))
+                  (string-join=$i 'sqlite3 cols ", " (length rowid))
                   (string-join=$i 'sqlite3 rowid " AND " 0))]
          [else (throw exn:fail:unsupported 'update.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
-(define simple-select.sql : (-> Symbol String (Listof String) (Option String) (Listof String) Virtual-Statement)
-  (lambda [which table rowid eam cols]
+(define simple-select.sql : (-> Symbol String (Listof String) (Listof String) Virtual-Statement)
+  (lambda [which table rowid cols]
     (define ~select : String "SELECT ~a FROM ~a WHERE ~a;")
     (define (rowid-join [dbms : DBSystem]) : String (string-join=$i (dbsystem-name dbms) rowid " AND " 0))
     (virtual-statement
      (case which
-       [(nowhere) (format "SELECT ~a FROM ~a;" (or eam (string-join cols ", ")) table)]
-       [(byrowid) (λ [[dbms : DBSystem]] (format ~select (or eam (string-join cols ", ")) table (rowid-join dbms)))]
+       [(nowhere) (format "SELECT ~a FROM ~a;" (string-join cols ", ") table)]
+       [(byrowid) (λ [[dbms : DBSystem]] (format ~select (string-join cols ", ") table (rowid-join dbms)))]
        [(ckrowid) (λ [[dbms : DBSystem]] (format ~select (car rowid) table (rowid-join dbms)))]
        [else #|not used|# (format "SELECT ~a FROM ~a;" (string-join rowid ", ") table)]))))
 
-(define ugly-select.sql : (-> String String Index (Option String) (Listof String) Virtual-Statement)
-  (lambda [table where argn eam cols]
+(define ugly-select.sql : (-> String String Index (Listof String) Virtual-Statement)
+  (lambda [table where argn cols]
     (virtual-statement
      (λ [[dbms : DBSystem]]
        (define dbn : Symbol (dbsystem-name dbms))
-       (format "SELECT ~a FROM ~a WHERE ~a;" (or eam (string-join cols ", ")) table
+       (format "SELECT ~a FROM ~a WHERE ~a;" (string-join cols ", ") table
                (apply format where (build-list argn (λ [[idx : Index]] ($? dbn idx)))))))))
 
 (define delete-from.sql : (-> String (Listof String) Virtual-Statement)

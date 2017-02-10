@@ -12,32 +12,25 @@
 
 (define-syntax (define-table stx)
   (syntax-parse stx #:datum-literals [:]
-    [(_ tbl #:as Table #:with primary-key (~optional entity-attribute-mode) ([field : DataType constraints ...] ...)
-        (~or (~optional (~seq #:check record-contract:expr) #:name "#:check" #:defaults ([record-contract #'#true]))
-             (~optional (~seq #:serialize serialize) #:name "#:serialize")
-             (~optional (~seq #:deserialize deserialize) #:name "#:deserialize")) ...)
+    [(_ tbl #:as Table #:with primary-key ([field : DataType constraints ...] ...)
+        (~or (~optional (~seq #:check record-contract:expr) #:name "#:check" #:defaults ([record-contract #'#true]))) ...)
      (with-syntax* ([___ (format-id #'id "...")]
                     [([table dbtable] Table-Rowid) (list (parse-table-name #'tbl) (format-id #'Table "~a-Rowid" #'Table))]
                     [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
-                    [eam (if (attribute entity-attribute-mode) (id->sql #'entity-attribute-mode) #'#false)]
                     [([view? table-rowid ...]
-                      [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples) ...]
-                      [(column table-column DBType column-guard column-not-null column-unique) ...]
+                      [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
+                               dbfield DBType field-guard not-null unique) ...]
                       [table? table-row? table-rowid-ref msg:schema:table make-table-message table->hash hash->table table-examples
                               force-create force-insert check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
-                           [tablename (syntax-e #'table)]
-                           [eam? (and (syntax-e #'eam) #true)])
-                       (define-values (sdleif snmuloc sdiwor)
-                         (for/fold ([sdleif null] [snmuloc null] [sdiwor null])
+                           [tablename (syntax-e #'table)])
+                       (define-values (sdleif sdiwor)
+                         (for/fold ([sdleif null] [sdiwor null])
                                    ([stx (in-syntax #'([field DataType constraints ...] ...))])
-                           (define-values (pk-info field-info column-info) (parse-field-definition tablename pkids eam? stx))
-                           (cond [(void? column-info) (values (cons field-info sdleif) snmuloc sdiwor)]
-                                 [else (values (cons field-info sdleif)
-                                               (cons column-info snmuloc)
-                                               (if pk-info (cons pk-info sdiwor) sdiwor))])))
-                       (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif) (reverse snmuloc)
+                           (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
+                           (values (cons field-info sdleif) (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
+                       (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif)
                              (for/list ([fmt (in-list (list "~a?" "~a-row?" "~a-rowid" "msg:schema:~a"
                                                             "make-~a-message" "~a->hash" "hash->~a" "~a-examples"
                                                             "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
@@ -51,8 +44,6 @@
                                 [rearg (in-syntax #'([field : (U FieldType MaybeNull Void) on-update] ...))])
                        (list (cons :fld (cons mkarg (car syns)))
                              (cons :fld (cons rearg (cadr syns)))))]
-                    [serialize (or (attribute serialize) #'(λ [[raw : Table]] : SQL-Datum (~s (table->hash raw))))]
-                    [deserialize (or (attribute deserialize) #'(λ [[raw : SQL-Datum]] : Table (hash->table (read:+? raw hash?))))]
                     [contract-literals #'(list 'field-contract ... 'record-contract)]
                     [define-table-rowid (cond [(syntax-e #'view?) #'(void)]
                                               [else #'(define (table-rowid-ref [self : Table]) : RowidType
@@ -110,34 +101,30 @@
                 
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
                   (do-create-table (and view? 'create-table) 'create-table (and silent? 'force-create)
-                                   dbc dbtable '(dbrowid ...) eam '(column ...) '(DBType ...)
-                                   '(column-not-null ...) '(column-unique ...)))
+                                   dbc dbtable '(dbrowid ...) '(dbfield ...) '(DBType ...) '(not-null ...) '(unique ...)))
 
                 (define (insert-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:or-replace? [replace? : Boolean #false]) : Void
-                  (do-insert-table (and view? 'insert-table) 'insert-table (and replace? 'force-insert) dbtable eam '(column ...)
-                                   dbc (if (table? selves) (in-value selves) (in-list selves))
-                                   (list table-column ...) serialize))
+                  (do-insert-table (and view? 'insert-table) 'insert-table (and replace? 'force-insert) dbtable '(dbfield ...)
+                                   dbc (if (table? selves) (in-value selves) (in-list selves)) (list table-field ...)))
                 
                 (define (delete-table [dbc : Connection] [selves : (U Table (Listof Table))]) : Void
                   (do-delete-from-table 'delete-table view? dbtable '(dbrowid ...)
-                                        dbc (if (table? selves) (in-value selves) (in-list selves))
-                                        (list table-rowid ...)))
+                                        dbc (if (table? selves) (in-value selves) (in-list selves)) (list table-rowid ...)))
 
                 (define-syntax (select-table stx) (syntax-case stx [] [(_ argl ___) #'(sequence->list (in-table argl ___))]))
                 (define (in-table [dbc : Connection]
                                   #:where [where : (U RowidType (Pairof String (Listof Any)) False) #false]
                                   #:fetch [size : (U Positive-Integer +inf.0) +inf.0]) : (Sequenceof (U Table exn))
                   (define (read-row [fields : (Listof SQL-Datum)]) : Table
-                    (apply unsafe-table (check-selected-row 'select-table 'table table-row? fields (list column-guard ...))))
-                  (do-select-table 'in-table 'select-table dbtable where '(dbrowid ...) eam '(column ...)
-                                   deserialize read-row dbc size))
+                    (apply unsafe-table (check-selected-row 'select-table 'table table-row? fields (list field-guard ...))))
+                  (do-select-table 'in-table 'select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row dbc size))
 
                 (define (update-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:check-first? [check? : Boolean #true]) : Void
-                  (do-update-table 'update-table view? 'table (and check? 'check-record) dbtable '(dbrowid ...) eam '(column ...)
+                  (do-update-table 'update-table view? 'table (and check? 'check-record) dbtable '(dbrowid ...) '(dbfield ...)
                                    dbc (if (table? selves) (in-value selves) (in-list selves))
-                                   (list table-column ...) (list table-rowid ...) serialize))))]))
+                                   (list table-field ...) (list table-rowid ...)))))]))
 
 (define-syntax (define-schema stx)
   (syntax-parse stx

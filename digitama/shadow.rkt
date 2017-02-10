@@ -12,31 +12,27 @@
 (require "virtual-sql.rkt")
 
 (require/typed "cheat.rkt"
-               [in-query-cols (->* (Connection Statement (U Positive-Integer +inf.0))
-                                   ((Listof SQL-Datum))
-                                   (Sequenceof SQL-Datum))]
-               [in-query-rows (->* (Connection Statement (U Positive-Integer +inf.0))
+               [in-query-rows (->* (Connection (U Positive-Integer +inf.0) Statement)
                                    ((Listof SQL-Datum))
                                    (Sequenceof (Listof SQL-Datum)))])
 
-(define do-create-table : (-> (Option Symbol) Symbol (Option Symbol) Connection String (Listof+ String) (Option String)
+(define do-create-table : (-> (Option Symbol) Symbol (Option Symbol) Connection String (Listof+ String)
                               (Listof String) (Listof String) (Listof Boolean) (Listof Boolean) Void)
-  (lambda [func create maybe-force dbc dbtable rowid eam cols types not-nulls uniques]
+  (lambda [func create maybe-force dbc dbtable rowid cols types not-nulls uniques]
     (unless (not func) (throw exn:fail:unsupported func "cannot create a temporary view"))
-    (define (mksql) : Virtual-Statement (create-table.sql maybe-force dbtable rowid eam cols types not-nulls uniques))
+    (define (mksql) : Virtual-Statement (create-table.sql maybe-force dbtable rowid cols types not-nulls uniques))
     (query-exec dbc (hash-ref! sqls (or maybe-force create) mksql))))
 
-(define do-insert-table : (All (a) (-> (Option Symbol) Symbol (Option Symbol) String (Option String) (Listof String)
-                                       Connection (Sequenceof a) (Listof (-> a Any)) (-> a SQL-Datum) Void))
-  (lambda [func insert maybe-replace dbtable eam cols dbc selves refs serialize]
-    (define (mksql) : Virtual-Statement (insert-into.sql maybe-replace dbtable eam cols))
+(define do-insert-table : (All (a) (-> (Option Symbol) Symbol (Option Symbol) String (Listof String)
+                                       Connection (Sequenceof a) (Listof (-> a Any)) Void))
+  (lambda [func insert maybe-replace dbtable cols dbc selves refs]
+    (define (mksql) : Virtual-Statement (insert-into.sql maybe-replace dbtable cols))
     (unless (not func) (throw exn:fail:unsupported func "cannot insert records into a temporary view"))
     (define insert.sql : Statement (hash-ref! sqls (or maybe-replace insert) mksql))
     (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
     (for ([record : a selves])
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbsys)))
-      (cond [(false? eam) (apply query-exec dbc insert.sql metrics)]
-            [else (apply query-exec dbc insert.sql (serialize record) metrics)]))))
+      (apply query-exec dbc insert.sql metrics))))
 
 (define do-delete-from-table : (All (a) (-> Symbol Boolean String (Listof+ String)
                                             Connection (Sequenceof a) (Listof (-> a SQL-Datum)) Void))
@@ -49,34 +45,27 @@
              (for/list : (Listof SQL-Datum) ([ref (in-list refs)]) (ref record))))))
 
 (define do-select-table : (All (a) (-> Symbol Symbol String (U False (Vectorof SQL-Datum) (Pairof String (Listof Any)))
-                                       (Listof+ String) (Option String) (Listof String) (-> SQL-Datum a) (-> (Listof SQL-Datum) a)
+                                       (Listof+ String) (Listof String) (-> (Listof SQL-Datum) a)
                                        Connection (U Positive-Integer +inf.0) (Sequenceof (U a exn))))
-  (lambda [select-nowhere select-where dbtable where rowid eam cols deserialize mkrow dbc size]
-    (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid eam cols)))
-    (define (mkugly [fmt : String] [_ : (Listof Any)]) : Statement (ugly-select.sql dbtable fmt (length _) eam cols))
-    (define (row->table [raw : (Listof SQL-Datum)]) (with-handlers ([exn? (λ [[e : exn]] e)]) (mkrow raw)))
-    (define (col->table [raw : SQL-Datum]) (with-handlers ([exn? (λ [[e : exn]] e)]) (deserialize raw)))
-    (define (argl-map [data : (Listof Any)]) : (Listof SQL-Datum)
-      (let ([dbn (dbsystem-name (connection-dbsystem dbc))])
-        (for/list ([r (in-list data)]) (racket->sql r dbn))))
-    (define sql : Statement
-      (cond [(not where) (hash-ref! sqls select-nowhere (mksql 'nowhere))]
-            [(vector? where) (hash-ref! sqls select-where (mksql 'byrowid))]
-            [else (hash-ref! ugly-sqls (cons dbtable (car where)) (λ [] (mkugly (car where) (cdr where))))]))
-    (if (not eam)
-        (cond [(not where) (sequence-map row->table (in-query-rows dbc sql size))]
-              [(vector? where) (sequence-map row->table (in-query-rows dbc sql size (vector->list where)))]
-              [else (sequence-map row->table (in-query-rows dbc sql size (argl-map (cdr where))))])
-        (cond [(not where) (sequence-map col->table (in-query dbc sql #:fetch size))]
-              [(vector? where) (sequence-map col->table (in-query-cols dbc sql size (vector->list where)))]
-              [else (sequence-map col->table (in-query-cols dbc sql size (argl-map (cdr where))))]))))
+  (lambda [select-nowhere select-where dbtable where rowid cols mkrow dbc size]
+    (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid cols)))
+    (define (mkugly [fmt : String] [_ : (Listof Any)]) : Statement (ugly-select.sql dbtable fmt (length _) cols))
+    (sequence-map (λ [[raw : (Listof SQL-Datum)]] (with-handlers ([exn? (λ [[e : exn]] e)]) (mkrow raw)))
+                  (cond [(not where) (in-query-rows dbc size (hash-ref! sqls select-nowhere (mksql 'nowhere)))]
+                        [(vector? where) (in-query-rows dbc size (hash-ref! sqls select-where (mksql 'byrowid)) (vector->list where))]
+                        [else (in-query-rows dbc size
+                                             (hash-ref! ugly-sqls (cons dbtable (car where))
+                                                        (λ [] (mkugly (car where) (cdr where))))
+                                             (let ([dbn (dbsystem-name (connection-dbsystem dbc))])
+                                               (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
+                                                 (racket->sql r dbn))))]))))
 
-(define do-update-table : (All (a) (-> Symbol Boolean Symbol (Option Symbol) String (Listof+ String) (Option String) (Listof+ String)
-                                       Connection (Sequenceof a) (Listof (-> a Any)) (Listof (-> a SQL-Datum)) (-> a SQL-Datum) Void))
-  (lambda [func view? table maybe-chpk dbtable rowid eam cols dbc selves refs pkrefs serialize]
+(define do-update-table : (All (a) (-> Symbol Boolean Symbol (Option Symbol) String (Listof+ String) (Listof+ String)
+                                       Connection (Sequenceof a) (Listof (-> a Any)) (Listof (-> a SQL-Datum)) Void))
+  (lambda [func view? table maybe-chpk dbtable rowid cols dbc selves refs pkrefs]
     (when view? (throw exn:fail:unsupported func "cannot update records of a temporary view"))
-    (define (mkup) : Virtual-Statement (update.sql dbtable rowid eam cols))
-    (define (mkck) : Virtual-Statement (simple-select.sql 'ckrowid dbtable rowid eam cols))
+    (define (mkup) : Virtual-Statement (update.sql dbtable rowid cols))
+    (define (mkck) : Virtual-Statement (simple-select.sql 'ckrowid dbtable rowid cols))
     (define up.sql : Statement (hash-ref! sqls func mkup))
     (define ck.sql : Statement (if maybe-chpk (hash-ref! sqls maybe-chpk mkck) up.sql))
     (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
@@ -86,8 +75,7 @@
         (schema-throw [exn:schema 'norow `((struct . ,table) (record . ,(list->vector rowid)))]
                       func "no such record found in the table"))
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbsys)))
-      (cond [(false? eam) (apply query dbc up.sql (append metrics rowid))]
-            [else (apply query dbc up.sql (serialize record) (append metrics rowid))]))))
+      (apply query dbc up.sql (append metrics rowid)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define ugly-sqls : (HashTable Any Statement) (make-hash))
