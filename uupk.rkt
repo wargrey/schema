@@ -16,7 +16,7 @@
 
 ;;; WARNING
 ; The actual generated 64bit primary keys only have 63 significant bits,
-;  since integers in SQLite3 are signed and the overflowed ones will be converted to `real`s unrecognized,
+;  since integers in SQLite3 are signed and the overflowed ones will be converted to `real`s unexpectedly,
 ;  nonetheless, 63bit is still reasonably good enough.
 
 (define pk64:timestamp : (->* () (Integer) Integer)
