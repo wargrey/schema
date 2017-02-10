@@ -54,8 +54,8 @@
   (lambda [select-nowhere select-where dbtable where rowid eam cols deserialize mkrow dbc size]
     (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid eam cols)))
     (define (mkugly [fmt : String] [_ : (Listof Any)]) : Statement (ugly-select.sql dbtable fmt (length _) rowid eam))
-    (define (row->table [rowid : (Listof SQL-Datum)]) (with-handlers ([exn? (λ [[e : exn]] e)]) (mkrow rowid)))
-    (define (col->table [rowid : SQL-Datum]) (with-handlers ([exn? (λ [[e : exn]] e)]) (deserialize rowid)))
+    (define (row->table [raw : (Listof SQL-Datum)]) (with-handlers ([exn? (λ [[e : exn]] e)]) (mkrow raw)))
+    (define (col->table [raw : SQL-Datum]) (with-handlers ([exn? (λ [[e : exn]] e)]) (deserialize raw)))
     (define sql : Statement
       (cond [(not where) (hash-ref! sqls select-nowhere (mksql 'nowhere))]
             [(vector? where) (hash-ref! sqls select-where (mksql 'byrowid))]
