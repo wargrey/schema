@@ -6,11 +6,9 @@
 
 (define-schema UUPKTamer
   (define-table uupk #:as UUPK #:with pk
-    ([pk     : Integer       #:default (pk64:timestamp)]
-     [type   : Symbol        #:not-null]
-     [fid    : Index         #:not-null]
-     [seq    : Index         #:not-null]
-     [mem    : Integer       #:not-null])))
+    ([pk     : Integer          #:default (pk64:timestamp)]
+     [type   : Symbol           #:not-null]
+     [urgent : (Listof Integer) #:not-null])))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 
@@ -19,9 +17,9 @@
     (thunk (time (build-list 8 (λ [[seq : Index]]
                                   (make-uupk #:pk (pk64)
                                              #:type (value-name pk64)
-                                             #:fid fid
-                                             #:seq seq
-                                             #:mem (current-memory-use))))))))
+                                             #:urgent (list fid seq
+                                                            (current-milliseconds)
+                                                            (current-memory-use)))))))))
 
 (define do-insert : (-> UUPK Void)
   (lambda [record]
@@ -38,7 +36,6 @@
   (for ([workers : (Futureof (Listof UUPK)) (in-list jobs)])
     (map do-insert (touch workers))))
 
-(select-uupk :memory:)
 (select-uupk :memory: #:where (list "pk <  ~a" 100000000000000)) ; timestamp PK will not larger this number.
 (select-uupk :memory: #:where (list "pk >= ~a and type = ~a" 100000000000000 'pk64:random))
 (disconnect :memory:)
