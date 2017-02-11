@@ -15,12 +15,12 @@
     [(_ tbl #:as Table #:with primary-key ([field : DataType constraints ...] ...)
         (~or (~optional (~seq #:check record-contract:expr) #:name "#:check" #:defaults ([record-contract #'#true]))) ...)
      (with-syntax* ([___ (format-id #'id "...")]
-                    [([table dbtable] Table-Rowid) (list (parse-table-name #'tbl) (format-id #'Table "~a-Rowid" #'Table))]
+                    [([table dbtable] #%Table) (list (parse-table-name #'tbl) (format-id #'Table "#%~a" #'Table))]
                     [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
                                dbfield DBType field-guard not-null unique) ...]
-                      [table? table-row? table-rowid-ref msg:schema:table make-table-message table->hash hash->table table-examples
+                      [table? table-row? #%table msg:schema:table make-table-message table->hash hash->table table-examples
                               force-create force-insert check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
@@ -31,7 +31,7 @@
                            (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
                            (values (cons field-info sdleif) (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif)
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "~a-rowid" "msg:schema:~a"
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "msg:schema:~a"
                                                             "make-~a-message" "~a->hash" "hash->~a" "~a-examples"
                                                             "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
                                (format-id #'table fmt tablename))
@@ -46,10 +46,10 @@
                              (cons :fld (cons rearg (cadr syns)))))]
                     [contract-literals #'(list 'field-contract ... 'record-contract)]
                     [define-table-rowid (cond [(syntax-e #'view?) #'(void)]
-                                              [else #'(define (table-rowid-ref [self : Table]) : RowidType
+                                              [else #'(define (#%table [self : Table]) : RowidType
                                                         (vector (table-rowid self) ...))])])
        #'(begin (define-type Table table)
-                (define-type Table-Rowid RowidType)
+                (define-type #%Table RowidType)
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
                 (struct msg:schema:table msg:schema ([occurrences : (U Table (Listof Table))]) #:prefab)
                 (define-predicate table-row? (List (U FieldType MaybeNull) ...))

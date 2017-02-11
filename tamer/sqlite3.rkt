@@ -51,7 +51,7 @@
                   (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (pk64:random))))])))
 
 (for/list : (Listof Any) ([m (in-list masters)])
-  (define uuids : Master-Rowid (master-rowid m))
+  (define uuids : #%Master (#%master m))
   (define ms : (Listof (U exn Master)) (select-master :memory: #:where uuids))
   (cond [(null? ms) (cons uuids 'deleted)]
         [else (let ([m : (U exn Master) (car ms)])
