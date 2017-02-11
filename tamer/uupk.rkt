@@ -1,25 +1,28 @@
 #lang digimon
 
 (require "../main.rkt")
+(require digimon/uuid)
 
 ; WARNING: This kind of tasks defeat futures!
 
 (define-schema UUPKTamer
   (define-table uupk #:as UUPK #:with pk
-    ([pk     : Integer          #:default (pk64:timestamp)]
-     [type   : Symbol           #:not-null]
-     [urgent : (Listof Integer) #:not-null])))
+    ([pk     : Integer                      #:not-null]
+     [rep    : String                       #:not-null]
+     [type   : Symbol                       #:not-null]
+     [urgent : (Pairof Integer Integer)     #:not-null])))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 
 (define make-job : (-> (-> Integer) Index (-> (Listof UUPK)))
   (lambda [pk64 fid]
-    (thunk (time (build-list 8 (λ [[seq : Index]]
-                                  (make-uupk #:pk (pk64)
-                                             #:type (value-name pk64)
-                                             #:urgent (list fid seq
-                                                            (current-milliseconds)
-                                                            (current-memory-use)))))))))
+    (thunk (let ([pks (time (build-list (processor-count) (λ _ (pk64))))]
+                 [type (value-name pk64)])
+             (for/list : (Listof UUPK) ([pk (in-list pks)] [seq (in-naturals)])
+               (make-uupk #:pk pk
+                          #:type type
+                          #:rep (uuid->string pk)
+                          #:urgent (cons fid seq)))))))
 
 (define do-insert : (-> UUPK Void)
   (lambda [record]
@@ -30,13 +33,13 @@
 
 (define pks : (Listof (Listof (Futureof (Listof UUPK))))
   (for/list ([pk64 (in-list (list pk64:timestamp pk64:random))])
-    (build-list (processor-count) (λ [[fid : Index]] (future (make-job pk64 fid))))))
+    (build-list (* (processor-count) 2) (λ [[fid : Index]] (future (make-job pk64 fid))))))
 
 (for ([jobs : (Listof (Futureof (Listof UUPK))) (in-list pks)])
   (for ([workers : (Futureof (Listof UUPK)) (in-list jobs)])
     (map do-insert (touch workers))))
 
-(select-uupk :memory: #:where (list "pk <  ~a" 100000000000000)) ; timestamp PK will not larger than this number.
-(select-uupk :memory: #:where (list "pk >= ~a and type = ~a" 100000000000000 'pk64:random))
+(select-uupk :memory: #:where (list "pk <  ~a" 5000000000000000000))
+(select-uupk :memory: #:where (list "pk >= ~a and type = ~a" 5000000000000000000 'pk64:random))
 
 (disconnect :memory:)
