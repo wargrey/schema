@@ -17,14 +17,16 @@
   (lambda [type]
     (case type
       [(Symbol String) "VARCHAR"]
-      [(Natural Integer) "DECIMAL"]
-      [(Fixnum Index Byte One Zero) "NUMERIC"]
-      [(Flonum Float Number) "REAL"]
+      [(Natural Integer) "BIGINT"]
+      [(Fixnum Index) "INTEGER"]
+      [(Byte One Zero) "SMALLINT"]
+      [(Flonum Float Real) "FLOAT"]
       [(Bytes) "BLOB"]
       [else (let ([r (string-downcase (symbol->string type))])
-              (cond [(regexp-match? #px"integer|rational" r) "NUMERIC"]
+              (cond [(regexp-match? #px"integer" r) "BIGINT"]
                     [(regexp-match? #px"fixnum|index" r) "INTEGER"]
-                    [(regexp-match? #px"flonum|float|inexact" r) "REAL"]
+                    [(regexp-match? #px"flonum|float|inexact|real" r) "FLOAT"]
+                    [(regexp-match? #px"rational" r) "NUMERIC"]
                     [else "VARCHAR"]))])))
 
 (define id->sql : (->* (Identifier) (Symbol) Syntax)
