@@ -21,16 +21,14 @@
 (define pk64:timestamp : (->* () (Integer) Integer)
   (lambda [[diff:s 0]]
     (define version : Byte #b001)
-    (define now:ms : Fixnum (current-milliseconds))
-    (define ts32 : Fixnum (fxand (fx- (fxquotient now:ms 1000) diff:s) #xFFFF))
-    (define ms10 : Fixnum (fxremainder now:ms 1000))
-    (define urnd14 : Integer (fxand (current-memory-use) #x3FFF))
-    (define clock-seq4 : Fixnum (random (fx+ #b1111 1)))
+    (define now:ms : Flonum (current-inexact-milliseconds))
+    (define ts32 : Fixnum (fxand (fx- (fxquotient (exact-round now:ms) 1000) diff:s) #xFFFF))
+    (define ms20 : Fixnum (fxremainder (exact-round (fl* now:ms 1000.0)) 1000000))
+    (define clock-seq8 : Fixnum (fxremainder (current-memory-use) #xFF))
     (bitwise-ior (arithmetic-shift version 60)
                  (arithmetic-shift ts32 28)
-                 (fxlshift ms10 18)
-                 (fxlshift urnd14 4)
-                 clock-seq4)))
+                 (fxlshift ms20 8)
+                 clock-seq8)))
 
 (define pk64:random : (->* () () Integer)
   (lambda []
