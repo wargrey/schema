@@ -22,7 +22,8 @@
                                dbfield DBType field-guard not-null unique) ...]
                       [table? table-row? #%table msg:schema:table make-table-message table->hash hash->table table-examples
                               force-create force-insert check-record]
-                      [unsafe-table make-table remake-table create-table insert-table delete-table in-table select-table update-table])
+                      [unsafe-table make-table remake-table create-table insert-table delete-table update-table
+                                    in-table select-table seek-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
                            [tablename (syntax-e #'table)])
                        (define-values (sdleif sdiwor)
@@ -35,7 +36,7 @@
                                                             "make-~a-message" "~a->hash" "hash->~a" "~a-examples"
                                                             "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
                                (format-id #'table fmt tablename))
-                             (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'in 'select 'update))])
+                             (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'update 'in 'select 'seek))])
                                (format-id #'table "~a-~a" prefix tablename))))]
                     [([mkargs ...] [reargs ...])
                      (for/fold ([syns (list null null)])
@@ -119,6 +120,11 @@
                   (define (read-row [fields : (Listof SQL-Datum)]) : Table
                     (apply unsafe-table (check-selected-row 'select-table 'table table-row? fields (list field-guard ...))))
                   (do-select-table 'in-table 'select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row dbc size))
+
+                (define (seek-table [dbc : Connection] #:where [where : (U RowidType (Pairof String (Listof Any)))]) : (Option Table)
+                  (define (read-row [fields : (Listof SQL-Datum)]) : Table
+                    (apply unsafe-table (check-selected-row 'seek-table 'table table-row? fields (list field-guard ...))))
+                  (do-seek-table 'select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row dbc))
 
                 (define (update-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:check-first? [check? : Boolean #true]) : Void

@@ -49,15 +49,25 @@
                                        Connection (U Positive-Integer +inf.0) (Sequenceof (U a exn))))
   (lambda [select-nowhere select-where dbtable where rowid cols mkrow dbc size]
     (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid cols)))
+    (define rows : (Sequenceof (Listof SQL-Datum))
+      (cond [(not where) (in-query-rows dbc size (hash-ref! sqls select-nowhere (mksql 'nowhere)))]
+            [(vector? where) (in-query-rows dbc size (hash-ref! sqls select-where (mksql 'byrowid)) (vector->list where))]
+            [else (in-query-rows dbc size (make-ugly-sql dbtable where cols)
+                                 (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
+                                   (racket->sql r dbc)))]))
+    (sequence-map (λ [[raw : (Listof SQL-Datum)]] (with-handlers ([exn? (λ [[e : exn]] e)]) (mkrow raw))) rows)))
+
+(define do-seek-table : (All (a) (-> Symbol String (U (Vectorof SQL-Datum) (Pairof String (Listof Any)))
+                                     (Listof+ String) (Listof String) (-> (Listof SQL-Datum) a) Connection (Option a)))
+  (lambda [select-where dbtable where rowid cols mkrow dbc]
+    (define (mksql [method : Symbol]) : (-> Statement) (λ [] (simple-select.sql method dbtable rowid cols)))
     (define (mkugly [fmt : String] [_ : (Listof Any)]) : Statement (ugly-select.sql dbtable fmt (length _) cols))
-    (sequence-map (λ [[raw : (Listof SQL-Datum)]] (with-handlers ([exn? (λ [[e : exn]] e)]) (mkrow raw)))
-                  (cond [(not where) (in-query-rows dbc size (hash-ref! sqls select-nowhere (mksql 'nowhere)))]
-                        [(vector? where) (in-query-rows dbc size (hash-ref! sqls select-where (mksql 'byrowid)) (vector->list where))]
-                        [else (in-query-rows dbc size
-                                             (hash-ref! ugly-sqls (cons dbtable (car where))
-                                                        (λ [] (mkugly (car where) (cdr where))))
-                                             (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
-                                               (racket->sql r dbc)))]))))
+    (define maybe-raw : (Option (Vectorof SQL-Datum))
+      (cond [(vector? where) (apply query-maybe-row dbc (hash-ref! sqls select-where (mksql 'byrowid)) (vector->list where))]
+            [else (apply query-maybe-row dbc (make-ugly-sql dbtable where cols)
+                         (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
+                           (racket->sql r dbc)))]))
+    (and maybe-raw (mkrow (vector->list maybe-raw)))))
 
 (define do-update-table : (All (a) (-> Symbol Boolean Symbol (Option Symbol) String (Listof+ String) (Listof+ String)
                                        Connection (Sequenceof a) (Listof (-> a Any)) (Listof (-> a Any)) Void))
@@ -78,6 +88,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define ugly-sqls : (HashTable Any Statement) (make-hash))
 (define sqls : (HashTable Symbol Statement) (make-hasheq))
+
+(define make-ugly-sql : (-> String (Pairof String (Listof Any)) (Listof String) Statement)
+  (lambda [dbtable where cols]
+    (hash-ref! ugly-sqls
+               (cons dbtable (car where))
+               (λ [] (ugly-select.sql dbtable (car where) (length (cdr where)) cols)))))
 
 (define check-constraint : (-> Symbol Symbol (Listof Symbol) (Listof Any) (Listof Any) Any * Void)
   (lambda [func table fields literals contracts  . givens]
