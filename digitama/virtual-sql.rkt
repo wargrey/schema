@@ -8,12 +8,15 @@
 
 (define-predicate sql-datum? SQL-Datum)
 
-(define racket->sql : (->* (Any Symbol) ((-> Any Symbol (U Void SQL-Datum))) SQL-Datum)
-  (lambda [v dbsystem [->sql void]]
-    (define user-defined-datum : (U SQL-Datum Void) (->sql v dbsystem))
-    (cond [(sql-datum? user-defined-datum) user-defined-datum]
-          [(false? v) sql-null]
-          [(boolean? v) (if (memq dbsystem '(mysql sqlite3)) 1 v)]
+(define racket->sql-pk : (-> Any SQL-Datum)
+  (lambda [v]
+    (cond [(sql-datum? v) v]
+          [else (~s v)])))
+
+(define racket->sql : (-> Any Connection SQL-Datum)
+  (lambda [v dbc]
+    (cond [(false? v) sql-null]
+          [(boolean? v) (if (memq (dbsystem-name (connection-dbsystem dbc)) '(mysql sqlite3)) 1 v)]
           [(sql-datum? v) v]
           [else (~s v)])))
 

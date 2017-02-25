@@ -29,20 +29,20 @@
     (define (mksql) : Virtual-Statement (insert-into.sql maybe-replace dbtable cols))
     (unless (not func) (throw exn:fail:unsupported func "cannot insert records into a temporary view"))
     (define insert.sql : Statement (hash-ref! sqls (or maybe-replace insert) mksql))
-    (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
     (for ([record : a selves])
-      (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbsys)))
+      (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbc)))
       (apply query-exec dbc insert.sql metrics))))
 
 (define do-delete-from-table : (All (a) (-> Symbol Boolean String (Listof+ String)
-                                            Connection (Sequenceof a) (Listof (-> a SQL-Datum)) Void))
-  (lambda [func view? dbtable rowid dbc selves refs]
+                                            Connection (Sequenceof a) (Listof (-> a Any)) Void))
+  (lambda [func view? dbtable rowid dbc selves pkrefs]
     (define (mksql) : Virtual-Statement (delete-from.sql dbtable rowid))
     (when view? (throw exn:fail:unsupported func "cannot delete records from a temporary view"))
     (define delete.sql : Statement (hash-ref! sqls func mksql))
     (for ([record : a selves])
       (apply query-exec dbc delete.sql
-             (for/list : (Listof SQL-Datum) ([ref (in-list refs)]) (ref record))))))
+             (for/list : (Listof SQL-Datum) ([ref (in-list pkrefs)])
+               (racket->sql-pk (ref record)))))))
 
 (define do-select-table : (All (a) (-> Symbol Symbol String (U False (Vectorof SQL-Datum) (Pairof String (Listof Any)))
                                        (Listof+ String) (Listof String) (-> (Listof SQL-Datum) a)
@@ -56,25 +56,23 @@
                         [else (in-query-rows dbc size
                                              (hash-ref! ugly-sqls (cons dbtable (car where))
                                                         (λ [] (mkugly (car where) (cdr where))))
-                                             (let ([dbn (dbsystem-name (connection-dbsystem dbc))])
-                                               (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
-                                                 (racket->sql r dbn))))]))))
+                                             (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
+                                               (racket->sql r dbc)))]))))
 
 (define do-update-table : (All (a) (-> Symbol Boolean Symbol (Option Symbol) String (Listof+ String) (Listof+ String)
-                                       Connection (Sequenceof a) (Listof (-> a Any)) (Listof (-> a SQL-Datum)) Void))
+                                       Connection (Sequenceof a) (Listof (-> a Any)) (Listof (-> a Any)) Void))
   (lambda [func view? table maybe-chpk dbtable rowid cols dbc selves refs pkrefs]
     (when view? (throw exn:fail:unsupported func "cannot update records of a temporary view"))
     (define (mkup) : Virtual-Statement (update.sql dbtable rowid cols))
     (define (mkck) : Virtual-Statement (simple-select.sql 'ckrowid dbtable rowid cols))
     (define up.sql : Statement (hash-ref! sqls func mkup))
     (define ck.sql : Statement (if maybe-chpk (hash-ref! sqls maybe-chpk mkck) up.sql))
-    (define dbsys : Symbol (dbsystem-name (connection-dbsystem dbc)))
     (for ([record : a selves])
-      (define rowid : (Listof SQL-Datum) (for/list ([ref (in-list pkrefs)]) (ref record)))
+      (define rowid : (Listof SQL-Datum) (for/list ([ref (in-list pkrefs)]) (racket->sql-pk (ref record))))
       (when (and maybe-chpk (false? (apply query-maybe-value dbc ck.sql rowid)))
         (schema-throw [exn:schema 'norow `((struct . ,table) (record . ,(list->vector rowid)))]
                       func "no such record found in the table"))
-      (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbsys)))
+      (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbc)))
       (apply query dbc up.sql (append metrics rowid)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

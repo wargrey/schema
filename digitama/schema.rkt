@@ -47,7 +47,7 @@
                     [contract-literals #'(list 'field-contract ... 'record-contract)]
                     [define-table-rowid (cond [(syntax-e #'view?) #'(void)]
                                               [else #'(define (#%table [self : Table]) : RowidType
-                                                        (vector (table-rowid self) ...))])])
+                                                        (vector (racket->sql-pk (table-rowid self)) ...))])])
        #'(begin (define-type Table table)
                 (define-type #%Table RowidType)
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
