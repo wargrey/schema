@@ -20,13 +20,13 @@
                                    (cons 'message message)
                                    info))))]))
 
-(define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol (U SQL-Datum exn) Any * Schema-Message)
+(define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol Any Any * Schema-Message)
   (lambda [table maniplation urgent . messages]
     (define-values (level message info) (schema-message-smart-info urgent messages))
     (msg:schema level message info (if (symbol? table) table (value-name table)) maniplation)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define schema-message-smart-info : (-> (U SQL-Datum exn) (Listof Any) (Values Log-Level String Any))
+(define schema-message-smart-info : (-> Any (Listof Any) (Values Log-Level String Any))
   (lambda [urgent messages]
     (define (info++ [e : exn] [info : (Listof (Pairof Symbol Any))]) (cons (cons 'message (exn-message e)) info))
     (define-values (smart-level smart-brief)
