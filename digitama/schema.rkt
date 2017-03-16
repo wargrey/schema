@@ -14,8 +14,7 @@
   (syntax-parse stx #:datum-literals [:]
     [(_ tbl #:as Table #:with primary-key ([field : DataType constraints ...] ...)
         (~or (~optional (~seq #:check record-contract:expr) #:name "#:check" #:defaults ([record-contract #'#true]))) ...)
-     (with-syntax* ([___ (format-id #'id "...")]
-                    [([table dbtable] #%Table) (list (parse-table-name #'tbl) (format-id #'Table "#%~a" #'Table))]
+     (with-syntax* ([([table dbtable] #%Table) (list (parse-table-name #'tbl) (format-id #'Table "#%~a" #'Table))]
                     [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
@@ -113,7 +112,7 @@
                   (do-delete-from-table 'delete-table view? dbtable '(dbrowid ...)
                                         dbc (if (table? selves) (in-value selves) (in-list selves)) (list table-rowid ...)))
 
-                (define-syntax (select-table stx) (syntax-case stx [] [(_ argl ___) #'(sequence->list (in-table argl ___))]))
+                (define-syntax (select-table stx) (syntax-case stx [] [(_ argl [... ...]) #'(sequence->list (in-table argl [... ...]))]))
                 (define (in-table [dbc : Connection]
                                   #:where [where : (U RowidType (Pairof String (Listof Any)) False) #false]
                                   #:fetch [size : (U Positive-Integer +inf.0) +inf.0]) : (Sequenceof (U Table exn))
