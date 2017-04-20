@@ -1,6 +1,8 @@
-#lang digimon/sugar
+#lang typed/racket/base
 
 (provide (all-defined-out))
+
+(require "digitama/misc.rkt")
 
 (require/provide typed/db/base)
 (require/provide typed/db/sqlite3)

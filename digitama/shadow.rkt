@@ -1,4 +1,4 @@
-#lang digimon/sugar
+#lang typed/racket/base
 
 (provide (all-defined-out))
 
@@ -10,6 +10,7 @@
 
 (require "message.rkt")
 (require "virtual-sql.rkt")
+(require "misc.rkt")
 
 (require/typed "cheat.rkt"
                [in-query-rows (->* (Connection (U Positive-Integer +inf.0) Statement)

@@ -1,7 +1,6 @@
-#lang digimon
+#lang typed/racket
 
 (require "../main.rkt")
-(require digimon/uuid)
 
 ; WARNING: This kind of tasks defeat futures!
 
@@ -17,16 +16,16 @@
 (define make-job : (-> (-> Integer) Index (-> (Listof UUPK)))
   (lambda [pk64 fid]
     (thunk (let ([pks (time (build-list (processor-count) (λ _ (pk64))))]
-                 [type (value-name pk64)])
+                 [type (assert (object-name pk64) symbol?)])
              (for/list : (Listof UUPK) ([pk (in-list pks)] [seq (in-naturals)])
                (make-uupk #:pk pk
                           #:type type
-                          #:rep (uuid->string pk)
+                          #:rep (number->string pk 16)
                           #:urgent (cons fid seq)))))))
 
 (define do-insert : (-> UUPK Void)
   (lambda [record]
-    (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (cons record (exn:fail:sql-info e)) /dev/stderr))])
+    (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (cons record (exn:fail:sql-info e)) (current-error-port)))])
       (insert-uupk :memory: record))))
 
 (create-uupk :memory:)

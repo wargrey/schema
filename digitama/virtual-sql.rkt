@@ -1,8 +1,12 @@
-#lang digimon
+#lang typed/racket/base
 
 (provide (all-defined-out))
 
+(require racket/format)
+(require racket/string)
 (require typed/db/base)
+
+(require "misc.rkt")
 
 (define sqlite3-support-without-rowid? : (Parameterof Boolean) (make-parameter #true))
 
@@ -15,7 +19,7 @@
 
 (define racket->sql : (-> Any Connection SQL-Datum)
   (lambda [v dbc]
-    (cond [(false? v) sql-null]
+    (cond [(not v) sql-null]
           [(boolean? v) (if (memq (dbsystem-name (connection-dbsystem dbc)) '(mysql sqlite3)) 1 v)]
           [(sql-datum? v) v]
           [else (~s v)])))

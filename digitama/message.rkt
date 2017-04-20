@@ -9,7 +9,6 @@
                [object-name (-> (U Struct-TypeTop exn) Symbol)])
 
 (require (for-syntax racket/base))
-(require (for-syntax syntax/parse))
 
 (define-syntax (struct: stx)
   (syntax-case stx [:]
@@ -17,22 +16,11 @@
      #'(begin (struct id rest ... #:prefab)
               (define-type ID id))]))
 
-(define-syntax (schema-throw stx)
-  (syntax-parse stx
-    [(_ [st:id sqlstat info] frmt:str v ...)
-     #'(schema-throw [st sqlstat info] (#%function) frmt v ...)]
-    [(_ [st:id sqlstat info] src frmt:str v ...)
-     #'(let ([message (format (string-append "~s: " frmt) src v ...)])
-         (raise (st message (current-continuation-marks)
-                    sqlstat (list* (cons 'code sqlstat)
-                                   (cons 'message message)
-                                   info))))]))
-
-(define-type Continuation-Stack (Pairof Symbol (Option (Vector (U String Symbol) Integer Integer))))
-
 (struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define-type Continuation-Stack (Pairof Symbol (Option (Vector (U String Symbol) Integer Integer))))
+
 (define rest->message : (-> (Listof Any) String)
   (lambda [messages]
     (cond [(null? messages) ""]

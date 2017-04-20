@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang typed/racket/base
 
 (provide (all-defined-out))
 
@@ -8,6 +8,7 @@
 (require "digitama/schema.rkt")
 (require "digitama/virtual-sql.rkt")
 (require "digitama/normalize.rkt")
+(require "digitama/misc.rkt")
 
 (require/typed db/private/sqlite3/ffi
                [sqlite3_libversion_number (-> Integer)])
@@ -35,9 +36,7 @@
   ;;; https://www.sqlite.org/pragma.html
   (lambda [sqlite name [argument (void)] #:schema [schema 'main]]
     (define dbms : Symbol (dbsystem-name (connection-dbsystem sqlite)))
-    (unless (eq? dbms 'sqlite3)
-      (raise (exn:fail:unsupported (format "sqlite3-pragma: not the target database system: ~a" dbms)
-                                   (current-continuation-marks))))
+    (unless (eq? dbms 'sqlite3) (throw exn:fail:unsupported "sqlite3-pragma: not the target database system: ~a" dbms))
     (define pragma.sql : String (string-append "PRAGMA " (name->sql schema) "." (name->sql name)))
     (cond [(void? argument) (query sqlite (string-append pragma.sql ";"))]
           [else (query sqlite (format (string-append pragma.sql " = ~a;")
