@@ -1,29 +1,40 @@
-#lang digimon
+#lang typed/racket/base
 
-(provide (all-defined-out) (struct-out exn:fail:sql) (struct-out exn:schema))
-(provide (struct-out msg:schema) make-schema-message Schema-Message)
+(provide (all-defined-out))
+(provide (struct-out exn:fail:sql) (struct-out exn:schema))
 
 (require typed/db/base)
 (require "digitama/message.rkt")
 
-(struct msg:query msg:log ([rows : (Listof (Vectorof SQL-Datum))]) #:prefab)
+(struct: msg:schema : Schema-Message ([level : Log-Level] [message : String] [topic : Symbol]))
 
-(define make-query-message : (-> Connection Statement Any Symbol SQL-Datum * Log-Message)
-  (lambda [dbc sql detail topic . argl]
-    (with-handlers ([exn? exn:schema->message])
-      (msg:query 'info (~a sql) detail topic
-                 (apply query-rows dbc sql argl)))))
+(struct: msg:schema:table : Schema-Table-Message msg:schema
+  ([maniplation : Symbol]
+   [raw : (U Bytes (Listof Bytes))]
+   [urgent : Any]))
 
-(define exn:schema->message : (-> exn [#:level Log-Level] Log-Message)
-  (lambda [e #:level [level #false]]
-    (cond [(not (exn:fail:sql? e)) (exn->message e #:level (or level 'error))]
-          [else (exn->message e #:detail (exn:fail:sql-info e) #:level (or level 'error))])))
+(struct: msg:schema:error : Schema-Error-Message msg:schema
+  ([state : (U String Symbol False)]
+   [detail :(Listof (Pairof Symbol Any))]
+   [stacks : (Listof Continuation-Stack)]))
 
-(define exn:sql-info-ref : (->* ((U exn:fail:sql Log-Message) Symbol) ((-> Any Any)) Any)
+(define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol (U Bytes (Listof Bytes)) Any Any * Schema-Message)
+  (lambda [table maniplation raw urgent . messages]
+    (define tablename : Symbol (if (symbol? table) table (struct-name table)))
+    (cond [(exn? urgent) (exn->schema-message urgent tablename maniplation)]
+          [else (msg:schema:table 'info (rest->message messages) tablename maniplation raw urgent)])))
+
+(define exn->schema-message : (->* (exn) (Symbol Symbol #:level Log-Level) Schema-Error-Message)
+  (lambda [e [table #false] [maniplation #false] #:level [level 'error]]
+    (msg:schema:error level (exn-message e) (struct-name e)
+                      (and (exn:fail:sql? e) (exn:fail:sql-sqlstate e)) (exn->info e)
+                      (continuation-mark->stacks (exn-continuation-marks e)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define exn:sql-info-ref : (->* ((U exn:fail:sql Schema-Error-Message) Symbol) ((-> Any Any)) Any)
   (lambda [e key [-> values]]
     (define info : (Listof (Pairof Any Any))
       (cond [(exn:fail:sql? e) (exn:fail:sql-info e)]
-            [else (let ([detail : Any (msg:log-detail e)])
-                    (if (list? detail) (filter pair? detail) null))]))
+            [else (msg:schema:error-detail e)]))
     (define pinfo : (Option (Pairof Any Any)) (assq key info))
     (and pinfo (-> (cdr pinfo)))))

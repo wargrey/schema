@@ -1,4 +1,4 @@
-#lang digimon
+#lang typed/racket
 
 (provide (all-defined-out))
 
@@ -10,6 +10,7 @@
 (define plan : Index (length types))
 
 (define launch-time : Integer (utc-seconds 2016 12 10 04 44 37))
+(define /dev/stderr : Output-Port (current-error-port))
 
 (define-schema SchemaTamer
   (define-table master #:as Master #:with [uuid name]
@@ -22,7 +23,7 @@
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 (sqlite3-version :memory:)
 
-(with-handlers ([exn? (λ [[e : exn]] (pretty-write (make-schema-message struct:sqlite-master 'create e) /dev/stderr))])
+(with-handlers ([exn? (λ [[e : exn]] (pretty-write (exn->schema-message e 'sqlite-master 'create) /dev/stderr))])
   (create-sqlite-master :memory:))
 
 (create-master :memory:)

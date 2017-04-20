@@ -1,14 +1,19 @@
-#lang digimon
+#lang typed/racket
 
-(provide (all-defined-out) (struct-out msg:schema))
+(provide (all-defined-out))
 
+(require "../message.rkt")
 (require "virtual-sql.rkt")
-(require "message.rkt")
 (require "syntax.rkt")
 (require "shadow.rkt")
 
+(require (for-syntax racket/base))
+(require (for-syntax syntax/parse))
+(require (for-syntax racket/syntax))
+(require (for-syntax racket/sequence))
+
 (define-type Schema schema)
-(struct schema () #:prefab)
+(struct schema () #:transparent)
 
 (define-syntax (define-table stx)
   (syntax-parse stx #:datum-literals [:]
@@ -19,7 +24,7 @@
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
                                dbfield DBType field-guard not-null unique) ...]
-                      [table? table-row? #%table msg:schema:table make-table-message table->hash hash->table table-examples
+                      [table? table-row? #%table make-table-message table->hash hash->table table-examples
                               force-create force-insert check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table update-table
                                     in-table select-table seek-table])
@@ -31,7 +36,7 @@
                            (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
                            (values (cons field-info sdleif) (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif)
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "msg:schema:~a"
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a"
                                                             "make-~a-message" "~a->hash" "hash->~a" "~a-examples"
                                                             "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
                                (format-id #'table fmt tablename))
@@ -50,8 +55,7 @@
                                                         (vector (racket->sql-pk (table-rowid self)) ...))])])
        #'(begin (define-type Table table)
                 (define-type #%Table RowidType)
-                (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
-                (struct msg:schema:table msg:schema ([occurrences : (U Table (Listof Table))]) #:prefab)
+                (struct table schema ([field : (U FieldType MaybeNull)] ...) #:transparent #:constructor-name unsafe-table)
                 (define-predicate table-row? (List (U FieldType MaybeNull) ...))
 
                 define-table-rowid
@@ -90,15 +94,14 @@
                 
                 (define make-table-message : (case-> [Symbol -> (-> (U Table (Listof Table) exn) Any * Schema-Message)]
                                                      [Symbol (U Table (Listof Table) exn) Any * -> Schema-Message])
-                  (case-lambda
-                    [(maniplation) (λ [occurrences . messages] (apply make-table-message maniplation occurrences messages))]
-                    [(maniplation occurrences . messages)
-                     (if (exn? occurrences)
-                         (let-values ([(level message info) (schema-message-smart-info occurrences messages)])
-                           (msg:schema level message info 'table maniplation))
-                         (let-values ([(level message info) (schema-message-smart-info #false messages)])
-                           (msg:schema:table level message info 'table maniplation occurrences)))]))
-                
+                  (let ([serialize (λ [[o : Table]] : Bytes (string->bytes/utf-8 (~s (table->hash o))))])
+                    (case-lambda
+                      [(maniplation) (λ [occurrences . messages] (apply make-table-message maniplation occurrences messages))]
+                      [(maniplation occurrences . messages)
+                       (cond [(exn? occurrences) (exn->schema-message occurrences 'table maniplation)]
+                             [(table? occurrences) (apply make-schema-message 'table maniplation (serialize occurrences) #false messages)]
+                             [else (apply make-schema-message 'table maniplation (map serialize occurrences) #false messages)])])))
+                  
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
                   (do-create-table (and view? 'create-table) 'create-table (and silent? 'force-create)
                                    dbc dbtable '(dbrowid ...) '(dbfield ...) '(DBType ...) '(not-null ...) '(unique ...)))
