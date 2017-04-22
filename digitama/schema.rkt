@@ -36,8 +36,7 @@
                            (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
                            (values (cons field-info sdleif) (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif)
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a"
-                                                            "make-~a-message" "~a->hash" "hash->~a" "~a-examples"
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "~a->hash" "hash->~a" "~a-examples"
                                                             "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
                                (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'update 'in 'select 'seek))])
@@ -98,7 +97,7 @@
                     (case-lambda
                       [(maniplation) (λ [occurrences . messages] (apply make-table-message maniplation occurrences messages))]
                       [(maniplation occurrences . messages)
-                       (cond [(exn? occurrences) (exn->schema-message occurrences 'table maniplation)]
+                       (cond [(exn? occurrences) (exn->schema-message occurrences)]
                              [(table? occurrences) (apply make-schema-message 'table maniplation (serialize occurrences) #false messages)]
                              [else (apply make-schema-message 'table maniplation (map serialize occurrences) #false messages)])])))
                   

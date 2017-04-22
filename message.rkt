@@ -14,21 +14,20 @@
    [urgent : Any]))
 
 (struct: msg:schema:error : Schema-Error-Message msg:schema
-  ([state : (U String Symbol)]
-   [detail :(Listof (Pairof Symbol Any))]
+  ([detail :(Listof (Pairof Symbol Any))]
    #;[stacks : (Listof Continuation-Stack)]))
 
 (define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol (U Bytes (Listof Bytes)) Any Any * Schema-Message)
   (lambda [table maniplation raw urgent . messages]
-    (cond [(exn? urgent) (exn->schema-message urgent table maniplation)]
+    (cond [(exn? urgent) (exn->schema-message urgent)]
           [else (msg:schema:table 'info (rest->message messages)
                                   (if (symbol? table) table (struct-name table))
                                   maniplation raw urgent)])))
 
-(define exn->schema-message : (->* (exn) ((U Struct-TypeTop Symbol) Symbol #:level Log-Level) Schema-Error-Message)
-  (lambda [e [table '||] [maniplation '||] #:level [level 'error]]
-    (msg:schema:error level (exn-message e) (if (symbol? table) table (struct-name table))
-                      (if (exn:fail:sql? e) (exn:fail:sql-sqlstate e) (struct-name e)) (exn->info e)
+(define exn->schema-message : (-> exn [#:level Log-Level] Schema-Error-Message)
+  (lambda [e #:level [level 'error]]
+    (define table : Any (and (exn:fail:sql? e) (exn:sql-info-ref e 'struct)))
+    (msg:schema:error level (exn-message e) (if (symbol? table) table (struct-name e)) (exn->info e)
                       #;(continuation-mark->stacks (exn-continuation-marks e)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

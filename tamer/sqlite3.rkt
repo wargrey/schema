@@ -23,7 +23,7 @@
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 (sqlite3-version :memory:)
 
-(with-handlers ([exn? (λ [[e : exn]] (pretty-write (exn->schema-message e struct:sqlite-master 'create) /dev/stderr))])
+(with-handlers ([exn? (λ [[e : exn]] (pretty-write (exn->schema-message e) /dev/stderr))])
   (create-sqlite-master :memory:))
 
 (create-master :memory:)

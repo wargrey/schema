@@ -19,7 +19,7 @@
 (struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define-type Continuation-Stack (Pairof Symbol (Option (Vector (U String Symbol) Integer Integer))))
+(define-type Continuation-Stack (Pairof Symbol (Option (U String Symbol))))
 
 (define rest->message : (-> (Listof Any) String)
   (lambda [messages]
@@ -35,16 +35,12 @@
 
 (define continuation-mark->stacks : (->* () ((U Continuation-Mark-Set Thread)) (Listof Continuation-Stack))
   (lambda [[cm (current-continuation-marks)]]
-    ((inst map (Pairof Symbol (Option (Vector (U String Symbol) Integer Integer))) (Pairof (Option Symbol) Any))
+    ((inst map Continuation-Stack (Pairof (Option Symbol) Any))
      (λ [[stack : (Pairof (Option Symbol) Any)]]
        (define maybe-srcinfo (cdr stack))
        (cons (or (car stack) 'λ)
              (and (srcloc? maybe-srcinfo)
-                  (let ([src (srcloc-source maybe-srcinfo)]
-                        [line (srcloc-line maybe-srcinfo)]
-                        [column (srcloc-column maybe-srcinfo)])
-                    (vector (if (symbol? src) src (format "~a" src))
-                            (or line -1)
-                            (or column -1))))))
+                  (let ([src (srcloc-source maybe-srcinfo)])
+                    (if (symbol? src) src (format "~a" src))))))
      (cond [(continuation-mark-set? cm) (continuation-mark-set->context cm)]
            [else (continuation-mark-set->context (continuation-marks cm))]))))
