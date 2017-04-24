@@ -103,14 +103,14 @@
                     [(field) (check-example field-examples (thunk (list defval ...)))] ...
                     [else (map table-examples '(field ...))]))
                 
-                (define make-table-message : (case-> [Symbol -> (-> (U Table (Listof Table) exn) Any * Schema-Message)]
-                                                     [Symbol (U Table (Listof Table) exn) Any * -> Schema-Message])
+                (define make-table-message : (case-> [Symbol -> (-> (U Table exn) Any * Schema-Message)]
+                                                     [Symbol (U Table exn) Any * -> Schema-Message])
                   (case-lambda
-                    [(maniplation) (λ [occurrences . messages] (apply make-table-message maniplation occurrences messages))]
-                    [(maniplation occurrences . messages)
-                     (cond [(exn? occurrences) (exn->schema-message occurrences)]
-                           [(table? occurrences) (apply make-schema-message 'table maniplation (table->bytes occurrences) #false messages)]
-                           [else (apply make-schema-message 'table maniplation (map table->bytes occurrences) #false messages)])]))
+                    [(maniplation)
+                     (λ [occurrence . messages] (apply make-table-message maniplation occurrence messages))]
+                    [(maniplation occurrence . messages)
+                     (cond [(exn? occurrence) (exn->schema-message occurrence)]
+                           [else (make-schema-message 'table maniplation (table->bytes occurrence) #false messages)])]))
                 
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
                   (do-create-table (and view? 'create-table) 'create-table (and silent? 'force-create)

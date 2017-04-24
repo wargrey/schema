@@ -10,14 +10,14 @@
 
 (struct: msg:schema:table : Schema-Table-Message msg:schema
   ([maniplation : Symbol]
-   [raw : (U Bytes (Listof Bytes))]
+   [raw : Bytes]
    [urgent : Any]))
 
 (struct: msg:schema:error : Schema-Error-Message msg:schema
   ([detail :(Listof (Pairof Symbol Any))]
    #;[stacks : (Listof Continuation-Stack)]))
 
-(define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol (U Bytes (Listof Bytes)) Any Any * Schema-Message)
+(define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol Bytes Any Any * Schema-Message)
   (lambda [table maniplation raw urgent . messages]
     (cond [(exn? urgent) (exn->schema-message urgent)]
           [else (msg:schema:table 'info (rest->message messages)
