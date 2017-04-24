@@ -6,6 +6,7 @@
 (require "virtual-sql.rkt")
 (require "syntax.rkt")
 (require "shadow.rkt")
+(require "misc.rkt")
 
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))
@@ -24,8 +25,8 @@
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
                                dbfield DBType field-guard not-null unique) ...]
-                      [table? table-row? #%table make-table-message table->hash hash->table table-examples
-                              force-create force-insert check-record]
+                      [table? table-row? #%table make-table-message table->hash hash->table table->bytes bytes->table
+                              table-examples force-create force-insert check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table update-table
                                     in-table select-table seek-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
@@ -36,7 +37,8 @@
                            (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
                            (values (cons field-info sdleif) (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif)
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "~a->hash" "hash->~a" "~a-examples"
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message"
+                                                            "~a->hash" "hash->~a" "~a->bytes" "bytes->~a" "~a-examples"
                                                             "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
                                (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'update 'in 'select 'seek))])
@@ -85,6 +87,16 @@
                                                   (list field-contract ... record-contract) field ...)
                                 (unsafe-table field ...))]))
 
+                ;;; TODO: this will be replaced by the Protocol Buffer
+                (define (table->bytes [self : Table]) : Bytes
+                  (string->bytes/utf-8 (~s (table->hash self))))
+
+                (define (bytes->table [src : Bytes] #:unsafe? [unsafe? : Boolean #false]) : Table
+                  (define maybe : Any (read (open-input-bytes src)))
+                  (cond [(hash? maybe) (hash->table maybe #:unsafe? unsafe?)]
+                        [else (schema-throw [exn:schema 'assertion `((struct . table) (got . ,src))]
+                                            'bytes->table "not an instance of ~a" 'table)]))
+                
                 (: table-examples (->* () ((Option Symbol)) (Listof Any)))
                 (define (table-examples [fname #false]) : (Listof Any)
                   (case fname
@@ -93,14 +105,13 @@
                 
                 (define make-table-message : (case-> [Symbol -> (-> (U Table (Listof Table) exn) Any * Schema-Message)]
                                                      [Symbol (U Table (Listof Table) exn) Any * -> Schema-Message])
-                  (let ([serialize (λ [[o : Table]] : Bytes (string->bytes/utf-8 (~s (table->hash o))))])
-                    (case-lambda
-                      [(maniplation) (λ [occurrences . messages] (apply make-table-message maniplation occurrences messages))]
-                      [(maniplation occurrences . messages)
-                       (cond [(exn? occurrences) (exn->schema-message occurrences)]
-                             [(table? occurrences) (apply make-schema-message 'table maniplation (serialize occurrences) #false messages)]
-                             [else (apply make-schema-message 'table maniplation (map serialize occurrences) #false messages)])])))
-                  
+                  (case-lambda
+                    [(maniplation) (λ [occurrences . messages] (apply make-table-message maniplation occurrences messages))]
+                    [(maniplation occurrences . messages)
+                     (cond [(exn? occurrences) (exn->schema-message occurrences)]
+                           [(table? occurrences) (apply make-schema-message 'table maniplation (table->bytes occurrences) #false messages)]
+                           [else (apply make-schema-message 'table maniplation (map table->bytes occurrences) #false messages)])]))
+                
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
                   (do-create-table (and view? 'create-table) 'create-table (and silent? 'force-create)
                                    dbc dbtable '(dbrowid ...) '(dbfield ...) '(DBType ...) '(not-null ...) '(unique ...)))

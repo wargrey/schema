@@ -62,9 +62,9 @@
 (disconnect :memory:)
 
 (define src : Master (remake-master #false #:name "remake:make"))
-(values src (remake-master src #:name "remake:okay") (master->hash src))
+(values src (remake-master src #:name "remake:okay") (master->bytes src))
 (with-handlers ([exn? (λ [e] e)]) (remake-master #false))
-(with-handlers ([exn? (λ [e] e)]) (hash->master (make-hasheq)))
+(with-handlers ([exn? (λ [e] e)]) (bytes->master (string->bytes/utf-8 (~s (make-hasheq)))))
 
 sqls
 (master-examples)
