@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
 (provide (all-defined-out))
+(provide (struct-out exn:schema))
 
 (require "digitama/misc.rkt")
 

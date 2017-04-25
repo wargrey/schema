@@ -25,7 +25,7 @@
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
                                dbfield DBType field-guard not-null unique) ...]
-                      [table? table-row? #%table make-table-message table->hash hash->table table->bytes bytes->table
+                      [table? table-row? #%table make-table-message make-table->message table->hash hash->table table->bytes bytes->table
                               table-examples force-create force-insert check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table update-table
                                     in-table select-table seek-table])
@@ -37,7 +37,7 @@
                            (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
                            (values (cons field-info sdleif) (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif)
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message"
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "make-~a->message"
                                                             "~a->hash" "hash->~a" "~a->bytes" "bytes->~a" "~a-examples"
                                                             "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
                                (format-id #'table fmt tablename))
@@ -98,19 +98,21 @@
                                             'bytes->table "not an instance of ~a" 'table)]))
                 
                 (: table-examples (->* () ((Option Symbol)) (Listof Any)))
-                (define (table-examples [fname #false]) : (Listof Any)
+                (define (table-examples [fname #false])
                   (case fname
                     [(field) (check-example field-examples (thunk (list defval ...)))] ...
                     [else (map table-examples '(field ...))]))
+
+                (define (make-table-message [manipulation : Symbol] [occurrence : (U Table exn)]
+                                            [->bytes : (-> Table Bytes) table->bytes]
+                                            #:urgent [urgent : Any #false]) : Schema-Message
+                  (cond [(exn? occurrence) (exn->schema-message occurrence 'table manipulation)]
+                        [else (make-schema-message #:urgent urgent 'table manipulation (->bytes occurrence))]))
                 
-                (define make-table-message : (case-> [Symbol -> (-> (U Table exn) Any * Schema-Message)]
-                                                     [Symbol (U Table exn) Any * -> Schema-Message])
-                  (case-lambda
-                    [(maniplation)
-                     (λ [occurrence . messages] (apply make-table-message maniplation occurrence messages))]
-                    [(maniplation occurrence . messages)
-                     (cond [(exn? occurrence) (exn->schema-message occurrence)]
-                           [else (make-schema-message 'table maniplation (table->bytes occurrence) #false messages)])]))
+                (define (make-table->message [manipulation : Symbol] [->bytes : (-> Table Bytes) table->bytes]
+                                             #:urgent [urgent : Any #false]) : (-> (U Table exn) Schema-Message)
+                  (λ [[occurrence : (U Table exn)]]
+                    (make-table-message manipulation occurrence ->bytes #:urgent urgent)))
                 
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
                   (do-create-table (and view? 'create-table) 'create-table (and silent? 'force-create)

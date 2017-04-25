@@ -4,6 +4,7 @@
 (provide (rename-out [object-name struct-name]))
 
 (require typed/db/base)
+(require "misc.rkt")
 
 (require/typed racket/base
                [object-name (-> (U Struct-TypeTop exn) Symbol)])
@@ -16,14 +17,10 @@
      #'(begin (struct id rest ... #:prefab)
               (define-type ID id))]))
 
-(struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define-type Continuation-Stack (Pairof Symbol (Option (U String Symbol))))
-
-(define rest->message : (-> (Listof Any) String)
+(define rest->message : (-> (U String (Pairof String (Listof Any))) String)
   (lambda [messages]
-    (cond [(null? messages) ""]
+    (cond [(string? messages) ""]
           [else (apply format (format "~a" (car messages)) (cdr messages))])))
 
 (define exn->info : (-> exn (Listof (Pairof Symbol Any)))
@@ -32,15 +29,3 @@
       (cond [(exn:schema? e) (info++ e (exn:fail:sql-info e))]
             [(exn:fail:sql? e) (exn:fail:sql-info e)]
             [else (info++ e (list (cons 'struct (object-name e))))]))))
-
-(define continuation-mark->stacks : (->* () ((U Continuation-Mark-Set Thread)) (Listof Continuation-Stack))
-  (lambda [[cm (current-continuation-marks)]]
-    ((inst map Continuation-Stack (Pairof (Option Symbol) Any))
-     (λ [[stack : (Pairof (Option Symbol) Any)]]
-       (define maybe-srcinfo (cdr stack))
-       (cons (or (car stack) 'λ)
-             (and (srcloc? maybe-srcinfo)
-                  (let ([src (srcloc-source maybe-srcinfo)])
-                    (if (symbol? src) src (format "~a" src))))))
-     (cond [(continuation-mark-set? cm) (continuation-mark-set->context cm)]
-           [else (continuation-mark-set->context (continuation-marks cm))]))))

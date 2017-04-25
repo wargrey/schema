@@ -1,40 +1,67 @@
 #lang typed/racket/base
 
 (provide (all-defined-out))
-(provide (struct-out exn:fail:sql) (struct-out exn:schema))
 
 (require typed/db/base)
 (require "digitama/message.rkt")
 
-(struct: msg:schema : Schema-Message ([level : Log-Level] [message : String] [topic : Symbol]))
+(struct: msg:schema : Schema-Message ([level : Log-Level] [brief : String] [urgent : Any] [topic : Symbol]))
+(struct: msg:schema:table : Schema-Table-Message msg:schema ([manipulation : Symbol] [raw : Bytes]))
+(struct: msg:schema:error : Schema-Error-Message msg:schema ([info :(Listof (Pairof Symbol Any))]))
 
-(struct: msg:schema:table : Schema-Table-Message msg:schema
-  ([maniplation : Symbol]
-   [raw : Bytes]
-   [urgent : Any]))
+(define make-schema-message : (->* ((U Struct-TypeTop Symbol) Symbol)
+                                   (Bytes #:urgent Any #:brief (U False String (Pairof String (Listof Any))))
+                                   Schema-Message)
+  (lambda [table manipulation [raw #""] #:urgent [urgent #false] #:brief [messages ""]]
+    (cond [(exn? urgent) (exn->schema-message urgent table manipulation)]
+          [else (let ([brief : String (if messages (rest->message messages) (format "(~a ~a ~s)" manipulation table urgent))])
+                  (msg:schema:table 'info brief urgent (if (symbol? table) table (struct-name table)) manipulation raw))])))
 
-(struct: msg:schema:error : Schema-Error-Message msg:schema
-  ([detail :(Listof (Pairof Symbol Any))]
-   #;[stacks : (Listof Continuation-Stack)]))
+(define exn->schema-message : (->* (exn) ((U Struct-TypeTop Symbol False) (Option Symbol) #:level Log-Level) Schema-Error-Message)
+  (lambda [e [table #false] [manipulation #false] #:level [level 'error]]
+    (define smart-table : Any
+      (cond [(not table) (and (exn:fail:sql? e) (exn:sql-info-ref e 'struct))]
+            [(symbol? table) table]
+            [else (struct-name table)]))
+    (msg:schema:error level (exn-message e) manipulation (if (symbol? smart-table) smart-table (struct-name e)) (exn->info e))))
 
-(define make-schema-message : (-> (U Struct-TypeTop Symbol) Symbol Bytes Any Any * Schema-Message)
-  (lambda [table maniplation raw urgent . messages]
-    (cond [(exn? urgent) (exn->schema-message urgent)]
-          [else (msg:schema:table 'info (rest->message messages)
-                                  (if (symbol? table) table (struct-name table))
-                                  maniplation raw urgent)])))
+(define schema-message-replace-urgent : (-> Schema-Message Any Schema-Message)
+  (lambda [message urgent]
+    (cond [(msg:schema:table? message) (struct-copy msg:schema:table message [urgent #:parent msg:schema urgent])]
+          [(msg:schema:error? message) (struct-copy msg:schema:error message [urgent #:parent msg:schema urgent])]
+          [else (struct-copy msg:schema message [urgent urgent])])))
 
-(define exn->schema-message : (-> exn [#:level Log-Level] Schema-Error-Message)
-  (lambda [e #:level [level 'error]]
-    (define table : Any (and (exn:fail:sql? e) (exn:sql-info-ref e 'struct)))
-    (msg:schema:error level (exn-message e) (if (symbol? table) table (struct-name e)) (exn->info e)
-                      #;(continuation-mark->stacks (exn-continuation-marks e)))))
+(define schema-log-message : (-> Schema-Message [#:logger Logger] [#:alter-topic (U Symbol Struct-TypeTop False)] Void)
+  (lambda [self #:logger [logger (current-logger)] #:alter-topic [topic #false]]
+    (log-message logger
+                 (msg:schema-level self)
+                 (cond [(not topic) (msg:schema-topic self)]
+                       [(symbol? topic) topic]
+                       [else (struct-name topic)])
+                 (msg:schema-brief self)
+                 self)))
+
+(define schema-log-message* : (->* ((U Struct-TypeTop Symbol) Symbol)
+                                   (Bytes #:urgent Any #:brief (U False String (Pairof String (Listof Any)))
+                                          #:logger Logger #:alter-topic (U Symbol Struct-TypeTop False))
+                                   Void)
+  (lambda [table manipulation [raw #""]
+                 #:urgent [urgent #false] #:brief [messages ""]
+                 #:logger [logger (current-logger)] #:alter-topic [topic #false]]
+    (define self : Schema-Message (make-schema-message table manipulation raw #:urgent urgent #:brief messages))
+    (log-message logger
+                 (msg:schema-level self)
+                 (cond [(not topic) (msg:schema-topic self)]
+                       [(symbol? topic) topic]
+                       [else (struct-name topic)])
+                 (msg:schema-brief self)
+                 self)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define exn:sql-info-ref : (->* ((U exn:fail:sql Schema-Error-Message) Symbol) ((-> Any Any)) Any)
   (lambda [e key [-> values]]
     (define info : (Listof (Pairof Any Any))
       (cond [(exn:fail:sql? e) (exn:fail:sql-info e)]
-            [else (msg:schema:error-detail e)]))
+            [else (msg:schema:error-info e)]))
     (define pinfo : (Option (Pairof Any Any)) (assq key info))
     (and pinfo (-> (cdr pinfo)))))

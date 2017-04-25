@@ -8,7 +8,6 @@
 
 (require typed/db/base)
 
-(require "message.rkt")
 (require "virtual-sql.rkt")
 (require "misc.rkt")
 

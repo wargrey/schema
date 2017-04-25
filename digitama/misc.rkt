@@ -2,6 +2,8 @@
 
 (provide (all-defined-out))
 
+(require typed/db/base)
+
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))
 
@@ -38,3 +40,5 @@
                                    info))))]))
 
 (define-type (Listof+ schema) (Pairof schema (Listof schema)))
+
+(struct exn:schema exn:fail:sql () #:extra-constructor-name make-exn:schema)
