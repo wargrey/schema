@@ -14,7 +14,7 @@
 (require (for-syntax racket/sequence))
 
 (define-type Schema schema)
-(struct schema () #:transparent)
+(struct schema () #:prefab) ; WARNING: non-prefab struct may cause the goddamn `contract error`
 
 (define-syntax (define-table stx)
   (syntax-parse stx #:datum-literals [:]
@@ -56,7 +56,7 @@
                                                         (vector (racket->sql-pk (table-rowid self)) ...))])])
        #'(begin (define-type Table table)
                 (define-type #%Table RowidType)
-                (struct table schema ([field : (U FieldType MaybeNull)] ...) #:transparent #:constructor-name unsafe-table)
+                (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
                 (define-predicate table-row? (List (U FieldType MaybeNull) ...))
 
                 define-table-rowid
@@ -89,11 +89,11 @@
 
                 ;;; TODO: this will be replaced by the Protocol Buffer
                 (define (table->bytes [self : Table]) : Bytes
-                  (string->bytes/utf-8 (~s (table->hash self))))
+                  (string->bytes/utf-8 (~s self)))
 
                 (define (bytes->table [src : Bytes] #:unsafe? [unsafe? : Boolean #false]) : Table
                   (define maybe : Any (read (open-input-bytes src)))
-                  (cond [(hash? maybe) (hash->table maybe #:unsafe? unsafe?)]
+                  (cond [(table? maybe) maybe]
                         [else (schema-throw [exn:schema 'assertion `((struct . table) (got . ,src))]
                                             'bytes->table "not an instance of ~a" 'table)]))
                 
