@@ -58,8 +58,9 @@
       [(r db) (list #'r (id->sql #'db))]))
   
   (define (parse-primary-key stx)
-    ; primary keys may not contained in the defining struct in which case the struct is treated as a temporary view
-    ; (U SQL-Datum (Vector SQL-Datum)) makes typed racket hard...
+    ;;; NOTE
+    ; 1. primary keys may not contained in the defining struct in which case the struct is treated as a temporary view
+    ; 2. (U SQL-Datum (Vector SQL-Datum)) makes typed racket hard...
     (syntax-parse stx
       [id:id (list #'(Vector SQL-Datum) (list #'id (id->sql #'id)))]
       [(id0 id ...) (let* ([ids (syntax->list #'(id0 id ...))])

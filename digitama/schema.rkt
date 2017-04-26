@@ -51,15 +51,16 @@
                        (list (cons :fld (cons mkarg (car syns)))
                              (cons :fld (cons rearg (cadr syns)))))]
                     [contract-literals #'(list 'field-contract ... 'record-contract)]
-                    [define-table-rowid (cond [(syntax-e #'view?) #'(void)]
-                                              [else #'(define (#%table [self : Table]) : RowidType
-                                                        (vector (racket->sql-pk (table-rowid self)) ...))])])
+                    [table-rowid-body (if (syntax-e #'view?)
+                                          #'(throw exn:fail:unsupported '#%table "temporary view has no primary keys")
+                                          #'(vector (racket->sql-pk (table-rowid self)) ...))])
        #'(begin (define-type Table table)
                 (define-type #%Table RowidType)
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
                 (define-predicate table-row? (List (U FieldType MaybeNull) ...))
 
-                define-table-rowid
+                (define (#%table [self : Table]) : RowidType
+                  table-rowid-body)
 
                 (define (make-table #:unsafe? [unsafe? : Boolean #false] mkargs ...) : Table
                   (when (not unsafe?)
@@ -107,7 +108,8 @@
                                             [->bytes : (-> Table Bytes) table->bytes]
                                             #:urgent [urgent : Any #false]) : Schema-Message
                   (cond [(exn? occurrence) (exn->schema-message occurrence 'table manipulation)]
-                        [else (make-schema-message #:urgent urgent 'table manipulation (->bytes occurrence))]))
+                        [else (make-schema-message #:urgent (or urgent (if view? (#%table occurrence) +nan.0))
+                                                   'table manipulation (->bytes occurrence))]))
                 
                 (define (make-table->message [manipulation : Symbol] [->bytes : (-> Table Bytes) table->bytes]
                                              #:urgent [urgent : Any #false]) : (-> (U Table exn) Schema-Message)
