@@ -4,7 +4,9 @@
 (provide (rename-out [object-name struct-name]))
 
 (require typed/db/base)
-(require "misc.rkt")
+(require "misc.rkt"
+         prefab-predicate-compat
+         (for-syntax racket/syntax))
 
 (require/typed racket/base
                [object-name (-> (U Struct-TypeTop exn) Symbol)])
@@ -14,8 +16,10 @@
 (define-syntax (struct: stx)
   (syntax-case stx [:]
     [(_ id : ID rest ...)
-     #'(begin (struct id rest ... #:prefab)
-              (define-type ID id))]))
+     #`(begin (struct id rest ... #:prefab)
+              (define-type ID id)
+              (define-backwards-compatible-flat-prefab-predicate
+                #,(format-id #'id "~a?" (syntax-e #'ID)) id))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define rest->message : (-> (U String (Pairof String (Listof Any))) String)

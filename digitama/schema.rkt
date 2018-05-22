@@ -7,6 +7,7 @@
 (require "syntax.rkt")
 (require "shadow.rkt")
 (require "misc.rkt")
+(require prefab-predicate-compat)
 
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))
@@ -25,7 +26,7 @@
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
                                dbfield DBType field-guard not-null unique) ...]
-                      [table? table-row? #%table make-table-message make-table->message table->hash hash->table table->bytes bytes->table
+                      [Table? table? table-row? #%table make-table-message make-table->message table->hash hash->table table->bytes bytes->table
                               table-examples force-create force-insert check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table update-table
                                     in-table select-table seek-table])
@@ -37,10 +38,11 @@
                            (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
                            (values (cons field-info sdleif) (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif)
-                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "make-~a->message"
-                                                            "~a->hash" "hash->~a" "~a->bytes" "bytes->~a" "~a-examples"
-                                                            "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
-                               (format-id #'table fmt tablename))
+                             (cons (format-id #'table "~a?" (syntax-e #'Table))
+                                   (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "make-~a->message"
+                                                                  "~a->hash" "hash->~a" "~a->bytes" "bytes->~a" "~a-examples"
+                                                                  "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
+                                     (format-id #'table fmt tablename)))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'update 'in 'select 'seek))])
                                (format-id #'table "~a-~a" prefix tablename))))]
                     [([mkargs ...] [reargs ...])
@@ -57,6 +59,7 @@
        #'(begin (define-type Table table)
                 (define-type #%Table RowidType)
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
+                (define-backwards-compatible-flat-prefab-predicate Table? table)
                 (define-predicate table-row? (List (U FieldType MaybeNull) ...))
 
                 (define (#%table [self : Table]) : RowidType
@@ -69,7 +72,9 @@
                   (unsafe-table field ...))
 
                 (define (remake-table [self : (Option Table)] #:unsafe? [unsafe? : Boolean #false] reargs ...) : Table
-                  (let ([field (field-value 'remake-table 'field self table-field field (thunk (void) defval ...))] ...)
+                  (let ([field ((inst field-value Table (U FieldType MaybeNull) (U FieldType MaybeNull))
+                                'remake-table 'field self table-field field (thunk (void) defval ...))]
+                        ...)
                     (when (not unsafe?)
                       (check-constraint 'remake-table 'table '(field ...) contract-literals
                                         (list field-contract ... record-contract) field ...))
@@ -94,7 +99,7 @@
 
                 (define (bytes->table [src : Bytes] #:unsafe? [unsafe? : Boolean #false]) : Table
                   (define maybe : Any (read (open-input-bytes src)))
-                  (cond [(table? maybe) maybe]
+                  (cond [(Table? maybe) maybe]
                         [else (schema-throw [exn:schema 'assertion `((struct . table) (got . ,src))]
                                             'bytes->table "not an instance of ~a" 'table)]))
                 

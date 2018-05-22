@@ -27,8 +27,10 @@
 
 (define schema-message-replace-urgent : (-> Schema-Message Any Schema-Message)
   (lambda [message urgent]
-    (cond [(msg:schema:table? message) (struct-copy msg:schema:table message [urgent #:parent msg:schema urgent])]
-          [(msg:schema:error? message) (struct-copy msg:schema:error message [urgent #:parent msg:schema urgent])]
+    (cond [(Schema-Table-Message? message)
+           (struct-copy msg:schema:table message [urgent #:parent msg:schema urgent])]
+          [(Schema-Error-Message? message)
+           (struct-copy msg:schema:error message [urgent #:parent msg:schema urgent])]
           [else (struct-copy msg:schema message [urgent urgent])])))
 
 (define schema-log-message : (-> Schema-Message [#:logger Logger] [#:alter-topic (U Symbol Struct-TypeTop False)] Void)
