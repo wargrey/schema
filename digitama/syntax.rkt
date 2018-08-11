@@ -65,4 +65,13 @@
       [id:id (list #'(Vector SQL-Datum) (list #'id (id->sql #'id)))]
       [(id0 id ...) (let* ([ids (syntax->list #'(id0 id ...))])
                       (cons (datum->syntax stx (cons 'Vector (make-list (length ids) 'SQL-Datum)))
-                            (map (λ [<id>] (list <id> (id->sql <id>))) ids)))])))
+                            (map (λ [<id>] (list <id> (id->sql <id>))) ids)))]))
+
+  (define (parse-order-by stx fields)
+    (define (order-id <order> fields)
+      (define order (syntax-e <order>))
+      (cond [(memq order fields) order]
+            [else (raise-syntax-error 'parse-order-by "#:order-by column is not defined" <order>)]))
+    (syntax-parse stx
+      [id:id (datum->syntax stx (order-id #'id fields))]
+      [sexp #'#false])))

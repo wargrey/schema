@@ -13,12 +13,13 @@
 (define /dev/stderr : Output-Port (current-error-port))
 
 (define-schema SchemaTamer
-  (define-table master #:as Master #:with [uuid name]
+  (define-table master #:as Master #:with [uuid name] #:order-by seed
     ([uuid     : Integer       #:default (pk64:timestamp launch-time)]
      [type     : Symbol        #:default 'table #:not-null #:% 'table]
      [name     : String        #:not-null #:unique #:check (string-contains? name ":")]
      [ctime    : Fixnum        #:default (current-milliseconds)]
-     [mtime    : Fixnum        #:auto (current-milliseconds)])))
+     [mtime    : Fixnum        #:auto (current-milliseconds)]
+     [seed     : Fixnum        #:default (random 256)])))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 (sqlite3-version :memory:)
@@ -42,7 +43,7 @@
   (insert-master :memory: masters)
   (insert-master :memory: masters))
 
-(select-master :memory:)
+(select-master :memory: #:asc? #false #:limit 4)
 
 (for ([record (in-master :memory:)] [idx (in-naturals)])
   (when (master? record)

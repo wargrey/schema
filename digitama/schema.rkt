@@ -23,14 +23,17 @@
 
 (define-syntax (define-table stx)
   (syntax-parse stx #:datum-literals [:]
-    [(_ tbl #:as Table #:with primary-key ([field : DataType constraints ...] ...)
+    [(_ tbl #:as Table #:with primary-key
+        (~optional (~seq #:order-by order-by) #:defaults ([order-by #'#false]))
+        ([field : DataType constraints ...] ...)
         (~or (~optional (~seq #:check record-contract:expr) #:name "#:check" #:defaults ([record-contract #'#true]))) ...)
      (with-syntax* ([(table dbtable) (parse-table-name #'tbl)]
                     [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
+                    [default-order-by (parse-order-by #'order-by (map syntax-e (syntax->list #'(field ...))))]
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
                                dbfield DBType field-guard not-null unique) ...]
-                      [#%Table Table-Row]
+                      [#%Table Table-Row Table-Fields]
                       [table? table-row? #%table make-table-message make-table->message
                               table->hash hash->table table->list list->table table-serialize table-deserialize
                               table-examples force-create force-insert check-record]
@@ -46,7 +49,7 @@
                            (values (cons field-info sdleif) (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor))
                              (reverse sdleif)
-                             (for/list ([fmt (in-list (list "#%~a" "~a-Row"))])
+                             (for/list ([fmt (in-list (list "#%~a" "~a-Row" "~a-Fields"))])
                                (format-id #'Table fmt TableName))
                              (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "make-~a->message"
                                                             "~a->hash" "hash->~a" "~a->list" "list->~a" "~a-serialize" "~a-deserialize"
@@ -68,6 +71,7 @@
        #'(begin (define-type Table table)
                 (define-type #%Table RowidType)
                 (define-type Table-Row (List (U FieldType MaybeNull) ...))
+                (define-type Table-Fields (U 'field ...))
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:transparent #:constructor-name unsafe-table)
                 (define-predicate Table-Row? table)
                 (define-predicate table-row? Table-Row)
@@ -130,16 +134,16 @@
                     [else (map table-examples '(field ...))]))
 
                 (define (make-table-message [manipulation : Symbol] [occurrence : (U Table exn)]
-                                            [->bytes : (-> Table Bytes) table-serialize]
+                                            [serialize : Schema-Serialize table->racket]
                                             #:urgent [urgent : Any #false]) : Schema-Message
                   (cond [(exn? occurrence) (exn->schema-message occurrence 'table manipulation)]
                         [else (make-schema-message #:urgent (or urgent (if view? (#%table occurrence) +nan.0))
-                                                   'table manipulation (->bytes occurrence))]))
+                                                   'table manipulation (table-serialize occurrence serialize))]))
                 
-                (define (make-table->message [manipulation : Symbol] [->bytes : (-> Table Bytes) table-serialize]
+                (define (make-table->message [manipulation : Symbol] [serialize : Schema-Serialize table->racket]
                                              #:urgent [urgent : Any #false]) : (-> (U Table exn) Schema-Message)
                   (λ [[occurrence : (U Table exn)]]
-                    (make-table-message manipulation occurrence ->bytes #:urgent urgent)))
+                    (make-table-message manipulation occurrence serialize #:urgent urgent)))
                 
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
                   (do-create-table (and view? 'create-table) 'create-table (and silent? 'force-create)
@@ -154,13 +158,25 @@
                   (do-delete-from-table 'delete-table view? dbtable '(dbrowid ...)
                                         dbc (if (table? selves) (in-value selves) (in-list selves)) (list table-rowid ...)))
 
-                (define-syntax (select-table stx) (syntax-case stx [] [(_ argl [... ...]) #'(sequence->list (in-table argl [... ...]))]))
-                (define (in-table [dbc : Connection]
-                                  #:where [where : (U RowidType (Pairof String (Listof Any)) False) #false]
-                                  #:fetch [size : (U Positive-Integer +inf.0) +inf.0]) : (Sequenceof (U Table exn))
+                (define (select-table [dbc : Connection]
+                                      #:where [where : (U RowidType (Pairof String (Listof Any)) False) #false]
+                                      #:fetch [size : (U Positive-Integer +inf.0) +inf.0]
+                                      #:order-by [order-field : (Option Table-Fields) 'default-order-by] #:asc? [asc? : Boolean #true]
+                                      #:limit [limit : Natural 0] #:offset [offset : Natural 0]) : (Sequenceof (U Table exn))
                   (define (read-row [fields : (Listof SQL-Datum)]) : Table
                     (apply unsafe-table (check-selected-row 'select-table 'table table-row? fields (list field-guard ...))))
-                  (do-select-table 'in-table 'select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row dbc size))
+                  (sequence->list (do-select-table 'in-table 'select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row
+                                                   dbc size order-field asc? limit offset)))
+                
+                (define (in-table [dbc : Connection]
+                                  #:where [where : (U RowidType (Pairof String (Listof Any)) False) #false]
+                                  #:fetch [size : (U Positive-Integer +inf.0) +inf.0]
+                                  #:order-by [order-field : (Option Table-Fields) 'default-order-by] #:asc? [asc? : Boolean #true]
+                                  #:limit [limit : Natural 0] #:offset [offset : Natural 0]) : (Sequenceof (U Table exn))
+                  (define (read-row [fields : (Listof SQL-Datum)]) : Table
+                    (apply unsafe-table (check-selected-row 'select-table 'table table-row? fields (list field-guard ...))))
+                  (do-select-table 'in-table 'select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row
+                                   dbc size order-field asc? limit offset))
 
                 (define (seek-table [dbc : Connection] #:where [where : (U RowidType (Pairof String (Listof Any)))]) : (Option Table)
                   (define (read-row [fields : (Listof SQL-Datum)]) : Table
