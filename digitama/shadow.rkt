@@ -2,19 +2,13 @@
 
 (provide (all-defined-out))
 
-(require racket/list)
-(require racket/bool)
 (require racket/sequence)
 
 (require typed/db/base)
 
+(require "unsafe/query.rkt")
 (require "virtual-sql.rkt")
 (require "misc.rkt")
-
-(require/typed "cheat.rkt"
-               [in-query-rows (->* (Connection (U Positive-Integer +inf.0) Statement)
-                                   ((Listof SQL-Datum))
-                                   (Sequenceof (Listof SQL-Datum)))])
 
 (define do-create-table : (-> (Option Symbol) Symbol (Option Symbol) Connection String (Listof+ String)
                               (Listof String) (Listof String) (Listof Boolean) (Listof Boolean) Void)
@@ -79,7 +73,7 @@
     (define ck.sql : Statement (if maybe-chpk (hash-ref! sqls maybe-chpk mkck) up.sql))
     (for ([record : a selves])
       (define rowid : (Listof SQL-Datum) (for/list ([ref (in-list pkrefs)]) (racket->sql-pk (ref record))))
-      (when (and maybe-chpk (false? (apply query-maybe-value dbc ck.sql rowid)))
+      (when (and maybe-chpk (not (apply query-maybe-value dbc ck.sql rowid)))
         (schema-throw [exn:schema 'norow `((struct . ,table) (record . ,(list->vector rowid)))]
                       func "no such record found in the table"))
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbc)))
@@ -94,71 +88,3 @@
     (hash-ref! ugly-sqls
                (cons dbtable (car where))
                (λ [] (ugly-select.sql dbtable (car where) (length (cdr where)) cols)))))
-
-(define check-constraint : (-> Symbol Symbol (Listof Symbol) (Listof Any) (Listof Any) Any * Void)
-  (lambda [func table fields literals contracts  . givens]
-    (when (memq #false contracts)
-      (define expected : (Listof Any)
-        (for/list ([result (in-list contracts)]
-                   [expected (in-list literals)]
-                   #:when (false? result))
-          expected))
-      (define ?fields : (Listof Symbol) (remove-duplicates (filter symbol? (flatten expected))))
-      (define given : HashTableTop
-        (for/hasheq ([f (in-list fields)]
-                     [v (in-list givens)]
-                     #:when (memq f ?fields))
-            (values f v)))
-      (schema-throw [exn:schema 'contract `((struct . ,table) (expected . ,expected) (given . ,given))]
-                    func "constraint violation"))))
-
-(define check-default-value : (All (a) (-> Symbol Symbol (U a Void) a))
-  (lambda [func field defval]
-    (when (void? defval) (error func "missing value for field '~a'" field))
-    defval))
-
-(define check-selected-row : (All (a) (-> Symbol Symbol (-> Any Boolean : #:+ a) (Listof SQL-Datum) (Listof (-> String Any)) a))
-  (lambda [func table table-row? fields guards]
-    (define metrics : (Listof Any) (map sql->racket fields guards))
-    (cond [(table-row? metrics) metrics]
-          [else (schema-throw [exn:schema 'assertion `((struct . ,table) (got . ,metrics))]
-                              func "maybe the database is penetrated")])))
-
-(define check-example : (-> Any (-> (Listof Any)) (Listof Any))
-  (lambda [example mkdefval]
-    (cond [(null? example) (mkdefval)]
-          [(list? example) example]
-          [else (list example)])))
-
-(define check-row : (All (a) (-> Symbol (Listof Any) (-> Any Boolean : #:+ a) String Any * a))
-  (lambda [func metrics table-row? errfmt . errmsg]
-    (cond [(table-row? metrics) metrics]
-          [else (apply error func errfmt errmsg)])))
-
-(define field-value : (All (a b c) (-> Symbol Symbol (Option a) (-> a b) (U b Void) (-> (U c Void)) (U b c)))
-  (lambda [func field self table-field value mkdefval]
-    (cond [(not (void? value)) value]
-          [(not self) (check-default-value func field (mkdefval))]
-          [else (table-field self)])))
-
-(define dict->record : (All (a) (-> Symbol HashTableTop (Listof Symbol) (Listof (-> Any)) (-> Any Boolean : #:+ a) a))
-  (lambda [func src fields mkdefval table-row?]
-    (define metrics : (Listof Any)
-      (for/list ([field (in-list fields)]
-                 [mkval (in-list mkdefval)])
-        (hash-ref src field (λ [] (check-default-value func field (mkval))))))
-    (check-row func metrics table-row? "mismatched source: ~a" metrics)))
-
-(define make-dict : (All (a) (-> (Listof Symbol) (Listof a) Boolean (HashTable Symbol a)))
-  (lambda [fields fvalues skip?]
-    (cond [(not skip?) (make-immutable-hasheq (map (inst cons Symbol a) fields fvalues))]
-          [else (for/hasheq : (HashTable Symbol a)
-                  ([key (in-list fields)]
-                   [val (in-list fvalues)]
-                   #:when val)
-                  (values key val))])))
-
-(define table-dict? : (-> HashTableTop (Listof Symbol) Boolean)
-  (lambda [src fields]
-    (for/and : Boolean ([field (in-list fields)])
-      (hash-has-key? src field))))

@@ -1,12 +1,17 @@
 #lang typed/racket
 
 (provide (all-defined-out))
+(provide Schema-Serialize Schema-Deserialize)
+(provide table->racket racket->table)
 
 (require "../message.rkt")
 (require "virtual-sql.rkt")
 (require "syntax.rkt")
 (require "shadow.rkt")
 (require "misc.rkt")
+
+(require "exchange/base.rkt")
+(require "exchange/racket.rkt")
 
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))
@@ -20,28 +25,33 @@
   (syntax-parse stx #:datum-literals [:]
     [(_ tbl #:as Table #:with primary-key ([field : DataType constraints ...] ...)
         (~or (~optional (~seq #:check record-contract:expr) #:name "#:check" #:defaults ([record-contract #'#true]))) ...)
-     (with-syntax* ([([table dbtable] #%Table) (list (parse-table-name #'tbl) (format-id #'Table "#%~a" #'Table))]
+     (with-syntax* ([(table dbtable) (parse-table-name #'tbl)]
                     [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
                                dbfield DBType field-guard not-null unique) ...]
-                      [Table? table? table-row? #%table make-table-message make-table->message table->hash hash->table
-                              table-serialize table-deserialize table-examples force-create force-insert check-record]
+                      [#%Table Table-Row]
+                      [table? table-row? #%table make-table-message make-table->message
+                              table->hash hash->table table->list list->table table-serialize table-deserialize
+                              table-examples force-create force-insert check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table update-table
                                     in-table select-table seek-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
+                           [TableName (syntax-e #'Table)]
                            [tablename (syntax-e #'table)])
                        (define-values (sdleif sdiwor)
                          (for/fold ([sdleif null] [sdiwor null])
                                    ([stx (in-syntax #'([field DataType constraints ...] ...))])
                            (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
                            (values (cons field-info sdleif) (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
-                       (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif)
-                             (cons (format-id #'table "~a?" (syntax-e #'Table))
-                                   (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "make-~a->message"
-                                                                  "~a->hash" "hash->~a" "~a-serialize" "~a-deserialize" "~a-examples"
-                                                                  "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
-                                     (format-id #'table fmt tablename)))
+                       (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor))
+                             (reverse sdleif)
+                             (for/list ([fmt (in-list (list "#%~a" "~a-Row"))])
+                               (format-id #'Table fmt TableName))
+                             (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "make-~a->message"
+                                                            "~a->hash" "hash->~a" "~a->list" "list->~a" "~a-serialize" "~a-deserialize"
+                                                            "~a-examples" "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
+                               (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'update 'in 'select 'seek))])
                                (format-id #'table "~a-~a" prefix tablename))))]
                     [([mkargs ...] [reargs ...])
@@ -57,9 +67,10 @@
                                           #'(vector (racket->sql-pk (table-rowid self)) ...))])
        #'(begin (define-type Table table)
                 (define-type #%Table RowidType)
+                (define-type Table-Row (List (U FieldType MaybeNull) ...))
                 (struct table schema ([field : (U FieldType MaybeNull)] ...) #:transparent #:constructor-name unsafe-table)
-                (define-predicate Table? table)
-                (define-predicate table-row? (List (U FieldType MaybeNull) ...))
+                (define-predicate Table-Row? table)
+                (define-predicate table-row? Table-Row)
 
                 (define (#%table [self : Table]) : RowidType
                   table-rowid-body)
@@ -79,33 +90,38 @@
                                         (list field-contract ... record-contract) field ...))
                     (unsafe-table field ...)))
 
+                (define (table->list [self : Table]) : Table-Row
+                  (list (table-field self) ...))
+
+                (define (list->table [src : (Listof Any)] #:unsafe? [unsafe? : Boolean #false] #:alt-name [name : Symbol 'list->table]) : Table
+                  (define record : Table-Row (check-row name src table-row? "mismatched source: ~a" src))
+                  (cond [(and unsafe?) (apply unsafe-table record)]
+                        [else (match-let ([(list field ...) record])
+                                (check-constraint name 'table '(field ...) contract-literals
+                                                  (list field-contract ... record-contract) field ...)
+                                (unsafe-table field ...))]))
+                
                 (define (table->hash [self : Table] #:skip-null? [skip? : Boolean #true])
-                  : (HashTable Symbol (U FieldType ... MaybeNull ...))
+                  : (Immutable-HashTable Symbol (U FieldType ... MaybeNull ...))
                   ((inst make-dict (U FieldType ... MaybeNull ...))
                    '(field ...) (list (table-field self) ...) skip?))
 
                 (define (hash->table [src : HashTableTop] #:unsafe? [unsafe? : Boolean #false]) : Table
-                  (define record (dict->record 'hash->table src '(field ...) (list (thunk (void) defval ...) ...) table-row?))
-                  (cond [(and unsafe?) (apply unsafe-table record)]
-                        [else (match-let ([(list field ...) record])
-                                (check-constraint 'hash->table 'table '(field ...) contract-literals
-                                                  (list field-contract ... record-contract) field ...)
-                                (unsafe-table field ...))]))
+                  (list->table #:unsafe? unsafe? #:alt-name 'hash->table
+                               (dict->record 'hash->table src
+                                             '(field ...)
+                                             (list (thunk (void) defval ...) ...))))
 
-                (define (table-serialize [self : Table]) : Bytes
-                  (string->bytes/utf-8
-                   (~s (hash-set (table->hash self #:skip-null? #false)
-                                 '|.| 'table))))
+                (define (table-serialize [self : Table] [serialize : Schema-Serialize table->racket]) : Bytes
+                  (define v : Any (serialize 'table '(field ...) (list (table-field self) ...)))
+                  (cond [(bytes? v) v]
+                        [(string? v) (string->bytes/utf-8 v)]
+                        [else (string->bytes/utf-8 (~s v))]))
 
-                (define (table-deserialize [src : Bytes] #:unsafe? [unsafe? : Boolean #false]) : Table
-                  (define maybe : Any (read (open-input-bytes src)))
-                  (cond [(not (hash? maybe))
-                         (schema-throw [exn:schema 'assertion `((struct . table) (got . ,src))]
-                                       'table-deserialize "not an occurrence of ~a" 'table)]
-                        [(not (table-dict? maybe '(|.| field ...)))
-                         (schema-throw [exn:schema 'assertion `((struct . table) (got . ,src))]
-                                       'table-deserialize "not an accurate occurrence of ~a" 'table)]
-                        [else (hash->table maybe #:unsafe? unsafe?)]))
+                (define (table-deserialize [src : Bytes] [deserialize : Schema-Deserialize racket->table]
+                                           #:unsafe? [unsafe? : Boolean #false]) : Table
+                  (list->table #:unsafe? unsafe? #:alt-name 'deserialize
+                               (deserialize 'table src '(field ...) (list (thunk (void) defval ...) ...))))
                 
                 (: table-examples (->* () ((Option Symbol)) (Listof Any)))
                 (define (table-examples [fname #false])

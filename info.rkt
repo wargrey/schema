@@ -5,8 +5,7 @@
 (define pkg-authors '(wargrey))
 
 (define version "1.0")
-(define deps '(("base" #:version "7.0.0.0")
-               "db-lib" "typed-racket-lib" "typed-racket-more"))
+(define deps '("base" "db-lib" "typed-racket-lib" "typed-racket-more"))
 (define build-deps '("scribble-lib" "racket-doc"))
 (define test-omit-paths 'all)
 
