@@ -7,7 +7,6 @@
 (require "syntax.rkt")
 (require "shadow.rkt")
 (require "misc.rkt")
-(require prefab-predicate-compat)
 
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))
@@ -15,7 +14,7 @@
 (require (for-syntax racket/sequence))
 
 (define-type Schema schema)
-(struct schema () #:prefab) ; WARNING: non-prefab struct may cause the goddamn `contract error`
+(struct schema () #:transparent)
 
 (define-syntax (define-table stx)
   (syntax-parse stx #:datum-literals [:]
@@ -26,8 +25,8 @@
                     [([view? table-rowid ...]
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
                                dbfield DBType field-guard not-null unique) ...]
-                      [Table? table? table-row? #%table make-table-message make-table->message table->hash hash->table table->bytes bytes->table
-                              table-examples force-create force-insert check-record]
+                      [Table? table? table-row? #%table make-table-message make-table->message table->hash hash->table
+                              table-serialize table-deserialize table-examples force-create force-insert check-record]
                       [unsafe-table make-table remake-table create-table insert-table delete-table update-table
                                     in-table select-table seek-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
@@ -40,7 +39,7 @@
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor)) (reverse sdleif)
                              (cons (format-id #'table "~a?" (syntax-e #'Table))
                                    (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "make-~a->message"
-                                                                  "~a->hash" "hash->~a" "~a->bytes" "bytes->~a" "~a-examples"
+                                                                  "~a->hash" "hash->~a" "~a-serialize" "~a-deserialize" "~a-examples"
                                                                   "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
                                      (format-id #'table fmt tablename)))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'update 'in 'select 'seek))])
@@ -58,8 +57,8 @@
                                           #'(vector (racket->sql-pk (table-rowid self)) ...))])
        #'(begin (define-type Table table)
                 (define-type #%Table RowidType)
-                (struct table schema ([field : (U FieldType MaybeNull)] ...) #:prefab #:constructor-name unsafe-table)
-                (define-backwards-compatible-flat-prefab-predicate Table? table)
+                (struct table schema ([field : (U FieldType MaybeNull)] ...) #:transparent #:constructor-name unsafe-table)
+                (define-predicate Table? table)
                 (define-predicate table-row? (List (U FieldType MaybeNull) ...))
 
                 (define (#%table [self : Table]) : RowidType
@@ -93,15 +92,20 @@
                                                   (list field-contract ... record-contract) field ...)
                                 (unsafe-table field ...))]))
 
-                ;;; TODO: this will be replaced by the Protocol Buffer
-                (define (table->bytes [self : Table]) : Bytes
-                  (string->bytes/utf-8 (~s self)))
+                (define (table-serialize [self : Table]) : Bytes
+                  (string->bytes/utf-8
+                   (~s (hash-set (table->hash self #:skip-null? #false)
+                                 '|.| 'table))))
 
-                (define (bytes->table [src : Bytes] #:unsafe? [unsafe? : Boolean #false]) : Table
+                (define (table-deserialize [src : Bytes] #:unsafe? [unsafe? : Boolean #false]) : Table
                   (define maybe : Any (read (open-input-bytes src)))
-                  (cond [(Table? maybe) maybe]
-                        [else (schema-throw [exn:schema 'assertion `((struct . table) (got . ,src))]
-                                            'bytes->table "not an instance of ~a" 'table)]))
+                  (cond [(not (hash? maybe))
+                         (schema-throw [exn:schema 'assertion `((struct . table) (got . ,src))]
+                                       'table-deserialize "not an occurrence of ~a" 'table)]
+                        [(not (table-dict? maybe '(|.| field ...)))
+                         (schema-throw [exn:schema 'assertion `((struct . table) (got . ,src))]
+                                       'table-deserialize "not an accurate occurrence of ~a" 'table)]
+                        [else (hash->table maybe #:unsafe? unsafe?)]))
                 
                 (: table-examples (->* () ((Option Symbol)) (Listof Any)))
                 (define (table-examples [fname #false])
@@ -110,13 +114,13 @@
                     [else (map table-examples '(field ...))]))
 
                 (define (make-table-message [manipulation : Symbol] [occurrence : (U Table exn)]
-                                            [->bytes : (-> Table Bytes) table->bytes]
+                                            [->bytes : (-> Table Bytes) table-serialize]
                                             #:urgent [urgent : Any #false]) : Schema-Message
                   (cond [(exn? occurrence) (exn->schema-message occurrence 'table manipulation)]
                         [else (make-schema-message #:urgent (or urgent (if view? (#%table occurrence) +nan.0))
                                                    'table manipulation (->bytes occurrence))]))
                 
-                (define (make-table->message [manipulation : Symbol] [->bytes : (-> Table Bytes) table->bytes]
+                (define (make-table->message [manipulation : Symbol] [->bytes : (-> Table Bytes) table-serialize]
                                              #:urgent [urgent : Any #false]) : (-> (U Table exn) Schema-Message)
                   (λ [[occurrence : (U Table exn)]]
                     (make-table-message manipulation occurrence ->bytes #:urgent urgent)))

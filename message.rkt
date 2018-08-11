@@ -3,6 +3,7 @@
 (provide (all-defined-out))
 
 (require typed/db/base)
+
 (require "digitama/message.rkt")
 
 (struct: msg:schema : Schema-Message ([level : Log-Level] [brief : String] [urgent : Any] [topic : Symbol]))

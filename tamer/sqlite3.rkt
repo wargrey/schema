@@ -62,9 +62,13 @@
 (disconnect :memory:)
 
 (define src : Master (remake-master #false #:name "remake:make"))
-(values src (remake-master src #:name "remake:okay") (master->bytes src))
+(cons src (remake-master src #:name "remake:okay"))
 (with-handlers ([exn? (λ [e] e)]) (remake-master #false))
-(with-handlers ([exn? (λ [e] e)]) (bytes->master #"#s((master schema 0))"))
+
+(let ([src-bytes (master-serialize src)])
+  (values src-bytes
+          (with-handlers ([exn:schema? (λ [[e : exn:schema]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
+            (master-deserialize src-bytes))))
 
 sqls
 (master-examples)

@@ -157,3 +157,8 @@
                    [val (in-list fvalues)]
                    #:when val)
                   (values key val))])))
+
+(define table-dict? : (-> HashTableTop (Listof Symbol) Boolean)
+  (lambda [src fields]
+    (for/and : Boolean ([field (in-list fields)])
+      (hash-has-key? src field))))
