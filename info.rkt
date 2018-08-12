@@ -1,7 +1,7 @@
 #lang info
 
 (define collection 'use-pkg-name)
-(define pkg-desc "A data modeling tool (along with the lightweight and elegant data access layer) for Typed Racket")
+(define pkg-desc "A data modeling tool for Typed Racket")
 (define pkg-authors '(wargrey))
 
 (define version "1.0")

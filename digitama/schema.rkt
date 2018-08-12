@@ -36,7 +36,7 @@
                       [#%Table Table-Row Table-Fields]
                       [table? table-row? #%table make-table-message make-table->message
                               table->hash hash->table table->list list->table table-serialize table-deserialize
-                              table-examples force-create force-insert check-record]
+                              table-aggregate table-examples]
                       [unsafe-table make-table remake-table create-table insert-table delete-table update-table
                                     in-table select-table seek-table])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
@@ -53,7 +53,7 @@
                                (format-id #'Table fmt TableName))
                              (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "make-~a->message"
                                                             "~a->hash" "hash->~a" "~a->list" "list->~a" "~a-serialize" "~a-deserialize"
-                                                            "~a-examples" "create-~a-if-not-exists" "insert-~a-or-replace" "check-~a-rowid"))])
+                                                            "~a-aggregate" "~a-examples"))])
                                (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'update 'in 'select 'seek))])
                                (format-id #'table "~a-~a" prefix tablename))))]
@@ -146,17 +146,18 @@
                     (make-table-message manipulation occurrence serialize #:urgent urgent)))
                 
                 (define (create-table [dbc : Connection] #:if-not-exists? [silent? : Boolean #false]) : Void
-                  (do-create-table (and view? 'create-table) 'create-table (and silent? 'force-create)
-                                   dbc dbtable '(dbrowid ...) '(dbfield ...) '(DBType ...) '(not-null ...) '(unique ...)))
+                  (do-create-table 'create-table view? silent? dbc
+                                   dbtable '(dbrowid ...) '(dbfield ...) '(DBType ...) '(not-null ...) '(unique ...)))
 
-                (define (insert-table [dbc : Connection] [selves : (U Table (Listof Table))]
-                                      #:or-replace? [replace? : Boolean #false]) : Void
-                  (do-insert-table (and view? 'insert-table) 'insert-table (and replace? 'force-insert) dbtable '(dbfield ...)
-                                   dbc (if (table? selves) (in-value selves) (in-list selves)) (list table-field ...)))
+                (define (insert-table [dbc : Connection] [selves : (U Table (Listof Table))] #:or-replace? [replace? : Boolean #false]) : Void
+                  (do-insert-table 'insert-table view? replace? dbtable '(dbfield ...) dbc
+                                   (if (table? selves) (in-value selves) (in-list selves))
+                                   (list table-field ...)))
                 
                 (define (delete-table [dbc : Connection] [selves : (U Table (Listof Table))]) : Void
-                  (do-delete-from-table 'delete-table view? dbtable '(dbrowid ...)
-                                        dbc (if (table? selves) (in-value selves) (in-list selves)) (list table-rowid ...)))
+                  (do-delete-from-table 'delete-table view? dbtable '(dbrowid ...) dbc
+                                        (if (table? selves) (in-value selves) (in-list selves))
+                                        (list table-rowid ...)))
 
                 (define (select-table [dbc : Connection]
                                       #:where [where : (U RowidType (Pairof String (Listof Any)) False) #false]
@@ -165,7 +166,7 @@
                                       #:limit [limit : Natural 0] #:offset [offset : Natural 0]) : (Sequenceof (U Table exn))
                   (define (read-row [fields : (Listof SQL-Datum)]) : Table
                     (apply unsafe-table (check-selected-row 'select-table 'table table-row? fields (list field-guard ...))))
-                  (sequence->list (do-select-table 'in-table 'select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row
+                  (sequence->list (do-select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row
                                                    dbc size order-field asc? limit offset)))
                 
                 (define (in-table [dbc : Connection]
@@ -175,19 +176,22 @@
                                   #:limit [limit : Natural 0] #:offset [offset : Natural 0]) : (Sequenceof (U Table exn))
                   (define (read-row [fields : (Listof SQL-Datum)]) : Table
                     (apply unsafe-table (check-selected-row 'select-table 'table table-row? fields (list field-guard ...))))
-                  (do-select-table 'in-table 'select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row
+                  (do-select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row
                                    dbc size order-field asc? limit offset))
 
                 (define (seek-table [dbc : Connection] #:where [where : (U RowidType (Pairof String (Listof Any)))]) : (Option Table)
                   (define (read-row [fields : (Listof SQL-Datum)]) : Table
                     (apply unsafe-table (check-selected-row 'seek-table 'table table-row? fields (list field-guard ...))))
-                  (do-seek-table 'select-table dbtable where '(dbrowid ...) '(dbfield ...) read-row dbc))
+                  (do-seek-table dbtable where '(dbrowid ...) '(dbfield ...) read-row dbc))
 
                 (define (update-table [dbc : Connection] [selves : (U Table (Listof Table))]
                                       #:check-first? [check? : Boolean #true]) : Void
-                  (do-update-table 'update-table view? 'table (and check? 'check-record) dbtable '(dbrowid ...) '(dbfield ...)
+                  (do-update-table 'update-table view? 'table check? dbtable '(dbrowid ...) '(dbfield ...)
                                    dbc (if (table? selves) (in-value selves) (in-list selves))
-                                   (list table-field ...) (list table-rowid ...)))))]))
+                                   (list table-field ...) (list table-rowid ...)))
+
+                #;(define (table-aggregate [dbc : Connection] #:distinct? [distinct? : Boolean ]) : Flonum
+                  )))]))
 
 (define-syntax (define-schema stx)
   (syntax-parse stx

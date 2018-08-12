@@ -27,6 +27,7 @@
 (with-handlers ([exn? (λ [[e : exn]] (pretty-write (exn->schema-message e) /dev/stderr))])
   (create-sqlite-master :memory:))
 
+(newline)
 (create-master :memory:)
 (sqlite3-table-info :memory: 'master #("type" "notnull" "pk"))
 (select-sqlite-master :memory:)
@@ -34,6 +35,7 @@
 (with-handlers ([exn:schema? (λ [[e : exn:schema]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
   (make-master #:name "[awkward]"))
 
+(newline)
 (define masters : (Listof Master)
   (for/list ([i (in-range plan)])
     (make-master #:type (list-ref types (remainder (random 256) (length types)))
@@ -45,6 +47,7 @@
 
 (select-master :memory: #:asc? #false #:limit 4)
 
+(newline)
 (for ([record (in-master :memory:)] [idx (in-naturals)])
   (when (master? record)
     (cond [(< idx (quotient plan 2)) (delete-master :memory: record)]
@@ -52,6 +55,7 @@
           [else (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
                   (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (pk64:random))))])))
 
+(newline)
 (for/list : (Listof Any) ([m (in-list masters)])
   (define uuids : #%Master (#%master m))
   (with-handlers ([exn? values])
@@ -62,14 +66,16 @@
 
 (disconnect :memory:)
 
+(newline)
 (define src : Master (remake-master #false #:name "remake:make"))
 (cons src (remake-master src #:name "remake:okay"))
 (with-handlers ([exn? (λ [e] e)]) (remake-master #false))
 
+(newline)
 (let ([src-bytes (master-serialize src)])
   (values src-bytes
           (with-handlers ([exn:schema? (λ [[e : exn:schema]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
             (master-deserialize src-bytes))))
 
-sqls
+(newline)
 (master-examples)

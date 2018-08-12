@@ -51,14 +51,14 @@
 
 (define order-limit : (-> (Option Symbol) Boolean Natural Natural String)
   (lambda [order-by asc? limit offset]
-    (string-append (if (not order-by) "" (format " ORDER BY ~a ~a" order-by (if asc? "ASC" "DESC")))
+    (string-append (if (not order-by) "" (format " ORDER BY ~a ~a" (name->sql order-by) (if asc? "ASC" "DESC")))
                    (cond [(and (eq? limit 0) (eq? offset 0)) ""]
                          [(and (> limit 0) (> offset 0)) (format " LIMIT ~a OFFSET ~a" limit offset)]
                          [(> limit 0) (format " Limit ~a" limit)]
                          [else (format " Limit -1 OFFSET ~a" offset)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define create-table.sql : (-> Any String (Listof+ String) (Listof String) (Listof String)
+(define create-table.sql : (-> Boolean String (Listof+ String) (Listof String) (Listof String)
                                (Listof Boolean) (Listof Boolean) Virtual-Statement)
   (lambda [silent? table rowid cols types not-nulls uniques]
     (virtual-statement
@@ -82,7 +82,7 @@
                   (if (and without-rowid? (sqlite3-support-without-rowid?)) " WITHOUT ROWID" ""))]
          [else (throw exn:fail:unsupported 'create-table.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
-(define insert-into.sql : (-> Any String (Listof String) Virtual-Statement)
+(define insert-into.sql : (-> Boolean String (Listof String) Virtual-Statement)
   (lambda [replace? table cols]
     (virtual-statement
      (λ [[dbms : DBSystem]]
@@ -111,26 +111,24 @@
          [else (throw exn:fail:unsupported 'update.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
 (define simple-select.sql : (-> Symbol String (Listof String) (Listof String) (Option Symbol) Boolean Natural Natural Virtual-Statement)
-  (lambda [which table rowid cols order-by asc? limit offset]
+  (lambda [which table rowid cols by asc? limit offset]
     (define ~select : String "SELECT ~a FROM ~a WHERE ~a~a;")
-    (define constraint : String (order-limit order-by asc? limit offset))
     (define (rowid-join [dbms : DBSystem]) : String (string-join=$i (dbsystem-name dbms) rowid " AND " 0))
     (virtual-statement
      (case which
-       [(nowhere) (format "SELECT ~a FROM ~a~a;" (string-join cols ", ") table constraint)]
-       [(byrowid) (λ [[dbms : DBSystem]] (format ~select (string-join cols ", ") table (rowid-join dbms) constraint))]
-       [(ckrowid) (λ [[dbms : DBSystem]] (format ~select (car rowid) table (rowid-join dbms) constraint))]
-       [else #|not used|# (format "SELECT ~a FROM ~a~a;" (string-join rowid ", ") table constraint)]))))
+       [(byrowid) (λ [[dbms : DBSystem]] (format ~select (string-join cols ", ") table (rowid-join dbms) (order-limit by asc? limit offset)))]
+       [(ckrowid) (λ [[dbms : DBSystem]] (format ~select (car rowid) table (rowid-join dbms) (order-limit by asc? limit offset)))]
+       [else #|nowhere|# (format "SELECT ~a FROM ~a~a;" (string-join cols ", ") table (order-limit by asc? limit offset))]))))
 
 (define ugly-select.sql : (-> String String Index (Listof String) (Option Symbol) Boolean Natural Natural Virtual-Statement)
-  (lambda [table where argn cols order-by asc? limit offset]
+  (lambda [table where argn cols by asc? limit offset]
     (virtual-statement
      (λ [[dbms : DBSystem]]
        (define dbn : Symbol (dbsystem-name dbms))
        (format "SELECT ~a FROM ~a WHERE ~a~a;"
          (string-join cols ", ") table
          (apply format where (build-list argn (λ [[idx : Index]] ($? dbn idx))))
-         (order-limit order-by asc? limit offset))))))
+         (order-limit by asc? limit offset))))))
 
 (define delete-from.sql : (-> String (Listof String) Virtual-Statement)
   (lambda [table rowid]

@@ -1,9 +1,12 @@
 #lang typed/racket/base
 
 (provide (all-defined-out))
+(provide (all-from-out typed/db/base))
+(provide (all-from-out typed/db/sqlite3))
 
 (require racket/file)
 (require typed/db/base)
+(require typed/db/sqlite3)
 
 (require "digitama/schema.rkt")
 (require "digitama/virtual-sql.rkt")
