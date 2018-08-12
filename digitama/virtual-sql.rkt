@@ -18,10 +18,10 @@
     (cond [(sql-datum? v) v]
           [else (~s v)])))
 
-(define racket->sql : (-> Any Connection SQL-Datum)
-  (lambda [v dbc]
+(define racket->sql : (-> Any Symbol SQL-Datum)
+  (lambda [v dbname]
     (cond [(not v) sql-null]
-          [(boolean? v) (if (memq (dbsystem-name (connection-dbsystem dbc)) '(mysql sqlite3)) 1 v)]
+          [(boolean? v) (if (memq dbname '(mysql sqlite3)) 1 v)]
           [(sql-datum? v) v]
           [else (~s v)])))
 

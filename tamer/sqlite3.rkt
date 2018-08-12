@@ -71,7 +71,8 @@
 (newline)
 (define src : Master (remake-master #false #:name "remake:make"))
 (cons src (remake-master src #:name "remake:okay"))
-(with-handlers ([exn? (λ [e] e)]) (remake-master #false))
+(with-handlers ([exn? (λ [[e : exn]] (pretty-write (exn->info e) /dev/stderr))])
+  (remake-master #false))
 
 (newline)
 (let ([src-bytes (master-serialize src)])

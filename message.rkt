@@ -1,6 +1,6 @@
 #lang typed/racket/base
 
-(provide (all-defined-out))
+(provide (all-defined-out) exn->info)
 
 (require typed/db/base)
 

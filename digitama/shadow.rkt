@@ -20,8 +20,9 @@
   (lambda [func view? replace? dbtable cols dbc selves refs]
     (unless (not view?) (throw exn:fail:unsupported func "cannot insert records into a temporary view"))
     (define insert.sql : Virtual-Statement (insert-into.sql replace? dbtable cols))
+    (define dbname : Symbol (dbsystem-name (connection-dbsystem dbc)))
     (for ([record : a selves])
-      (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbc)))
+      (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbname)))
       (apply query-exec dbc insert.sql metrics))))
 
 (define do-delete-from-table : (All (a) (-> Symbol Boolean String (Listof+ String) Connection (Sequenceof a) (Listof (-> a Any)) Void))
@@ -35,27 +36,28 @@
 
 (define do-select-table : (All (a) (-> String (U False (Vectorof SQL-Datum) (Pairof String (Listof Any)))
                                        (Listof+ String) (Listof String) (-> (Listof SQL-Datum) a)
-                                       Connection (U Positive-Integer +inf.0) (Option Symbol) Boolean Natural Natural
-                                       (Sequenceof (U a exn))))
-  (lambda [dbtable where rowid cols mkrow dbc size order-by asc? limit offset]
+                                       Connection (U Positive-Integer +inf.0) (Option Symbol) Boolean Natural Natural (Sequenceof (U a exn))))
+  (lambda [dbtable where rowid cols row->table dbc size order-by asc? limit offset]
     (define rows : (Sequenceof (Listof SQL-Datum))
       (cond [(not where) (in-query-rows dbc size (make-query-sql 'nowhere dbtable rowid cols order-by asc? limit offset))]
             [(vector? where) (in-query-rows dbc size (make-query-sql 'byrowid dbtable rowid cols order-by asc? limit offset) (vector->list where))]
             [else (in-query-rows dbc size (make-ugly-sql dbtable where cols order-by asc? limit offset)
-                                 (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
-                                   (racket->sql r dbc)))]))
-    (sequence-map (λ [[raw : (Listof SQL-Datum)]] (with-handlers ([exn? (λ [[e : exn]] e)]) (mkrow raw))) rows)))
+                                 (let ([dbname (dbsystem-name (connection-dbsystem dbc))])
+                                   (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
+                                     (racket->sql r dbname))))]))
+    (sequence-map (λ [[raw : (Listof SQL-Datum)]] (with-handlers ([exn? (λ [[e : exn]] e)]) (row->table raw))) rows)))
 
 (define do-seek-table : (All (a) (-> String (U (Vectorof SQL-Datum) (Pairof String (Listof Any)))
-                                     (Listof+ String) (Listof String) (-> (Listof SQL-Datum) a) Connection (Option a)))
-  (lambda [dbtable where rowid cols mkrow dbc]
+                                     (Listof+ String) (Listof String) (-> (Vectorof SQL-Datum) a) Connection (Option a)))
+  (lambda [dbtable where rowid cols row->table dbc]
     (define (mksql [method : Symbol]) : Virtual-Statement (make-query-sql method dbtable rowid cols #false #true 0 0))
     (define maybe-raw : (Option (Vectorof SQL-Datum))
       (cond [(vector? where) (apply query-maybe-row dbc (mksql 'byrowid) (vector->list where))]
             [else (apply query-maybe-row dbc (make-ugly-sql dbtable where cols #false #true 0 0)
-                         (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
-                           (racket->sql r dbc)))]))
-    (and maybe-raw (mkrow (vector->list maybe-raw)))))
+                         (let ([dbname (dbsystem-name (connection-dbsystem dbc))])
+                           (for/list : (Listof SQL-Datum) ([r (in-list (cdr where))])
+                             (racket->sql r dbname))))]))
+    (and maybe-raw (row->table maybe-raw))))
 
 (define do-update-table : (All (a) (-> Symbol Boolean Symbol Boolean String (Listof+ String) (Listof+ String)
                                        Connection (Sequenceof a) (Listof (-> a Any)) (Listof (-> a Any)) Void))
@@ -63,20 +65,22 @@
     (unless (not view?) (throw exn:fail:unsupported func "cannot update records of a temporary view"))
     (define up.sql : Virtual-Statement (update.sql dbtable rowid cols))
     (define ck.sql : Virtual-Statement (if check-pk? (make-query-sql 'ckrowid dbtable rowid cols #false #true 0 0) up.sql))
+    (define dbname : Symbol (dbsystem-name (connection-dbsystem dbc)))
     (for ([record : a selves])
       (define rowid : (Listof SQL-Datum) (for/list ([ref (in-list pkrefs)]) (racket->sql-pk (ref record))))
       (when (and check-pk? (not (apply query-maybe-value dbc ck.sql rowid)))
         (schema-throw [exn:schema 'norow `((struct . ,table) (record . ,(list->vector rowid)))]
                       func "no such record found in the table"))
-      (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbc)))
+      (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbname)))
       (apply query dbc up.sql (append metrics rowid)))))
 
 (define do-table-aggregate : (-> String Symbol Symbol Boolean Connection (Option Flonum))
   (lambda [dbtable function column distinct? dbc]
     (define aggr.sql : Virtual-Statement (aggregate.sql dbtable function column distinct?))
     (define v : SQL-Datum (query-maybe-value dbc aggr.sql))
-    (and (real? v)
-         (real->double-flonum v))))
+    (cond [(flonum? v) v]
+          [(real? v) (real->double-flonum v)]
+          [else #false])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; TODO: does it need to cache these statements?

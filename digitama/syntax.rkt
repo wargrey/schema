@@ -28,9 +28,10 @@
            [Racket (values #'Racket #'"VARCHAR")]))
        (define-values (primary? not-null?) (values (and (member (syntax-e #'field) rowids) #true) (attribute not-null)))
        (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
+       (define list-table-field (format-id #'field "list-~a-~a" tablename (syntax-e #'field)))
        (values (and primary? table-field)
                (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
-                     table-field
+                     table-field list-table-field
                      (or (attribute contract) #'#true)
                      DataType #|Cannot union the DataType and False here since the type may not builtin|#
                      (if (or primary? (attribute not-null)) DataType #'False)
