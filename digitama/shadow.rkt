@@ -71,6 +71,13 @@
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbc)))
       (apply query dbc up.sql (append metrics rowid)))))
 
+(define do-table-aggregate : (-> String Symbol Symbol Boolean Connection (Option Flonum))
+  (lambda [dbtable function column distinct? dbc]
+    (define aggr.sql : Virtual-Statement (aggregate.sql dbtable function column distinct?))
+    (define v : SQL-Datum (query-maybe-value dbc aggr.sql))
+    (and (real? v)
+         (real->double-flonum v))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; TODO: does it need to cache these statements?
 (define make-query-sql : (-> Symbol String (Listof+ String) (Listof String) (Option Symbol) Boolean Natural Natural Virtual-Statement)

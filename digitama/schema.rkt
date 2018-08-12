@@ -34,11 +34,9 @@
                       [(:field table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
                                dbfield DBType field-guard not-null unique) ...]
                       [#%Table Table-Row Table-Fields]
-                      [table? table-row? #%table make-table-message make-table->message
-                              table->hash hash->table table->list list->table table-serialize table-deserialize
-                              table-aggregate table-examples]
-                      [unsafe-table make-table remake-table create-table insert-table delete-table update-table
-                                    in-table select-table seek-table])
+                      [table? table-row? #%table make-table-message make-table->message table->hash hash->table table->list list->table]
+                      [unsafe-table make-table remake-table create-table insert-table delete-table update-table in-table select-table seek-table]
+                      [table-serialize table-deserialize table-aggregate table-examples])
                      (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
                            [TableName (syntax-e #'Table)]
                            [tablename (syntax-e #'table)])
@@ -52,11 +50,12 @@
                              (for/list ([fmt (in-list (list "#%~a" "~a-Row" "~a-Fields"))])
                                (format-id #'Table fmt TableName))
                              (for/list ([fmt (in-list (list "~a?" "~a-row?" "#%~a" "make-~a-message" "make-~a->message"
-                                                            "~a->hash" "hash->~a" "~a->list" "list->~a" "~a-serialize" "~a-deserialize"
-                                                            "~a-aggregate" "~a-examples"))])
+                                                            "~a->hash" "hash->~a" "~a->list" "list->~a"))])
                                (format-id #'table fmt tablename))
                              (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'update 'in 'select 'seek))])
-                               (format-id #'table "~a-~a" prefix tablename))))]
+                               (format-id #'table "~a-~a" prefix tablename))
+                             (for/list ([suffix (in-list (list 'serialize 'deserialize 'aggregate 'examples))])
+                               (format-id #'table "~a-~a" tablename suffix))))]
                     [([mkargs ...] [reargs ...])
                      (for/fold ([syns (list null null)])
                                ([:fld (in-syntax #'(:field ...))]
@@ -127,12 +126,6 @@
                   (list->table #:unsafe? unsafe? #:alt-name 'deserialize
                                (deserialize 'table src '(field ...) (list (thunk (void) defval ...) ...))))
                 
-                (: table-examples (->* () ((Option Symbol)) (Listof Any)))
-                (define (table-examples [fname #false])
-                  (case fname
-                    [(field) (check-example field-examples (thunk (list defval ...)))] ...
-                    [else (map table-examples '(field ...))]))
-
                 (define (make-table-message [manipulation : Symbol] [occurrence : (U Table exn)]
                                             [serialize : Schema-Serialize table->racket]
                                             #:urgent [urgent : Any #false]) : Schema-Message
@@ -190,8 +183,15 @@
                                    dbc (if (table? selves) (in-value selves) (in-list selves))
                                    (list table-field ...) (list table-rowid ...)))
 
-                #;(define (table-aggregate [dbc : Connection] #:distinct? [distinct? : Boolean ]) : Flonum
-                  )))]))
+                (define (table-aggregate [dbc : Connection] [function : Symbol] [column : Table-Fields]
+                                         #:distinct? [distinct? : Boolean #false]) : (Option Flonum)
+                  (do-table-aggregate dbtable function column distinct? dbc))
+
+                (: table-examples (->* () ((Option Symbol)) (Listof Any)))
+                (define (table-examples [fname #false])
+                  (case fname
+                    [(field) (check-example field-examples (thunk (list defval ...)))] ...
+                    [else (map table-examples '(field ...))]))))]))
 
 (define-syntax (define-schema stx)
   (syntax-parse stx

@@ -137,3 +137,34 @@
        (format "DELETE FROM ~a WHERE ~a;" table
                (string-join=$i (dbsystem-name dbms)
                                rowid " AND " 0))))))
+
+(define aggregate.sql : (-> String Symbol Symbol Boolean Virtual-Statement)
+  (lambda [table function column distinct?]
+    (virtual-statement
+     (case function
+       [(average)
+        (λ [[dbms : DBSystem]]
+          (case (dbsystem-name dbms)
+            [(sqlite3) (format "SELECT avg(~a~a) FROM ~a;" (if distinct? "DISTINCT " "") (name->sql column) table)]
+            [else (throw exn:fail:unsupported 'aggregate.sql "unknown database system: ~a" (dbsystem-name dbms))]))]
+       [(count)
+        (λ [[dbms : DBSystem]]
+          (case (dbsystem-name dbms)
+            [(sqlite3) (format "SELECT count(~a~a) FROM ~a;" (if distinct? "DISTINCT " "") (name->sql column) table)]
+            [else (throw exn:fail:unsupported 'aggregate.sql "unknown database system: ~a" (dbsystem-name dbms))]))]
+       [(min)
+        (λ [[dbms : DBSystem]]
+          (case (dbsystem-name dbms)
+            [(sqlite3) (format "SELECT min(~a~a) FROM ~a;" (if distinct? "DISTINCT " "") (name->sql column) table)]
+            [else (throw exn:fail:unsupported 'aggregate.sql "unknown database system: ~a" (dbsystem-name dbms))]))]
+       [(max)
+        (λ [[dbms : DBSystem]]
+          (case (dbsystem-name dbms)
+            [(sqlite3) (format "SELECT max(~a~a) FROM ~a;" (if distinct? "DISTINCT " "") (name->sql column) table)]
+            [else (throw exn:fail:unsupported 'aggregate.sql "unknown database system: ~a" (dbsystem-name dbms))]))]
+       [(sum)
+        (λ [[dbms : DBSystem]]
+          (case (dbsystem-name dbms)
+            [(sqlite3) (format "SELECT sum(~a~a) FROM ~a;" (if distinct? "DISTINCT " "") (name->sql column) table)]
+            [else (throw exn:fail:unsupported 'aggregate.sql "unknown database system: ~a" (dbsystem-name dbms))]))]
+       [else (throw exn:fail:unsupported 'aggregate.sql "unknown aggregate function: ~a" function)]))))

@@ -46,6 +46,8 @@
   (insert-master :memory: masters))
 
 (select-master :memory: #:asc? #false #:limit 4)
+(for/list : (Listof Any) ([aggr : Symbol (in-list '(count min average max sum))])
+  (cons aggr (master-aggregate :memory: aggr 'seed)))
 
 (newline)
 (for ([record (in-master :memory:)] [idx (in-naturals)])
