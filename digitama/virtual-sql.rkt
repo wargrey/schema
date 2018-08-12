@@ -2,7 +2,6 @@
 
 (provide (all-defined-out))
 
-(require racket/format)
 (require racket/string)
 (require typed/db/base)
 
@@ -10,26 +9,6 @@
 (require "normalize.rkt")
 
 (define sqlite3-support-without-rowid? : (Parameterof Boolean) (make-parameter #true))
-
-(define-predicate sql-datum? SQL-Datum)
-
-(define racket->sql-pk : (-> Any SQL-Datum)
-  (lambda [v]
-    (cond [(sql-datum? v) v]
-          [else (~s v)])))
-
-(define racket->sql : (-> Any Symbol SQL-Datum)
-  (lambda [v dbname]
-    (cond [(not v) sql-null]
-          [(boolean? v) (if (memq dbname '(mysql sqlite3)) 1 v)]
-          [(sql-datum? v) v]
-          [else (~s v)])))
-
-(define sql->racket : (->* (SQL-Datum) ((-> String Any)) Any)
-  (lambda [v [->racket void]]
-    (cond [(sql-null? v) #false]
-          [(string? v) (->racket v)]
-          [else v])))
 
 (define $? : (-> Symbol Integer String)
   (lambda [dbn idx]

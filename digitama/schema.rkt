@@ -5,13 +5,13 @@
 (provide table->racket racket->table)
 
 (require "../message.rkt")
-(require "virtual-sql.rkt")
 (require "syntax.rkt")
 (require "shadow.rkt")
 (require "misc.rkt")
 
 (require "exchange/base.rkt")
 (require "exchange/racket.rkt")
+(require "exchange/sql.rkt")
 
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))

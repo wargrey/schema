@@ -8,6 +8,7 @@
 (require typed/db/base)
 
 (require "unsafe/query.rkt")
+(require "exchange/sql.rkt")
 (require "virtual-sql.rkt")
 (require "misc.rkt")
 
