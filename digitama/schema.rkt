@@ -31,7 +31,7 @@
                     [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
                     [default-order-by (parse-order-by #'order-by (map syntax-e (syntax->list #'(field ...))))]
                     [([view? table-rowid ...]
-                      [(FieldDatum FieldType :field table-field list-table-field field-contract on-update [defval ...] field-examples
+                      [(FieldDatum :field table-field list-table-field FieldType field-contract on-update [defval ...] field-examples
                                    dbfield DBType field-guard not-null unique) ...]
                       [#%Table Table-List Table-Field]
                       [table? table-list? #%table make-table-message make-table->message table->hash hash->table
@@ -44,8 +44,8 @@
                        (define-values (sdleif sdiwor)
                          (for/fold ([sdleif null] [sdiwor null])
                                    ([stx (in-syntax #'([field DataType constraints ...] ...))])
-                           (define-values (maybe-pkref ftype field-info) (parse-field-definition tablename pkids stx))
-                           (values (cons (list* #'SQL-Datum (if (pair? ftype) #`(U #,(car ftype) #,(cdr ftype)) ftype) field-info) sdleif)
+                           (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
+                           (values (cons (cons #'SQL-Datum field-info) sdleif)
                                    (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor))
                              (reverse sdleif)
