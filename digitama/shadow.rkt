@@ -3,6 +3,7 @@
 (provide (all-defined-out))
 
 (require racket/sequence)
+(require racket/list)
 
 (require typed/db/base)
 
@@ -81,6 +82,17 @@
     (cond [(flonum? v) v]
           [(real? v) (real->double-flonum v)]
           [else #false])))
+
+(define do-select-column : (All (a) (-> Symbol Symbol Symbol Any String String (-> String Any) (-> Any Boolean : a)
+                                        Connection (Option Symbol) Boolean Natural Natural
+                                        (Listof (U a exn))))
+  (lambda [func table field types dbtable dbfield guard fieldtype? dbc order-by asc? limit offset]
+    (define select.sql : Virtual-Statement (simple-select.sql 'nowhere dbtable null (list dbfield) order-by asc? limit offset))
+    (for/list ([datum : SQL-Datum (in-list (query-list dbc select.sql))])
+      (define v : Any (sql->racket datum guard))
+      (cond [(fieldtype? v) v]
+            [else (make-schema-error [exn:schema 'assertion `((struct . ,table) (field . ,field) (expected . ,types) (got . ,v))]
+                                     func "impossible value found in the column")]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; TODO: does it need to cache these statements?

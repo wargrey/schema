@@ -30,11 +30,11 @@
        (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
        (define list-table-field (format-id #'field "list-~a-~a" tablename (syntax-e #'field)))
        (values (and primary? table-field)
+               (cond [(or primary? (attribute not-null)) DataType]
+                     [else (cons DataType #'False) #| Cannot union the DataType and False here since the type may not builtin |#])
                (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
                      table-field list-table-field
                      (or (attribute contract) #'#true)
-                     DataType #|Cannot union the DataType and False here since the type may not builtin|#
-                     (if (or primary? (attribute not-null)) DataType #'False)
                      (or (attribute generate) #'(void))
                      (cond [(attribute defval) #'(defval)]
                            [(attribute generate) #'(generate)]

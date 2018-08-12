@@ -46,6 +46,7 @@
   (insert-master :memory: masters))
 
 (select-master :memory: #:asc? #false #:limit 4)
+(cons 'seed (list-master-seed :memory:))
 (for/list : (Listof Any) ([aggr : Symbol (in-list '(count min average max sum))])
   (cons aggr (master-aggregate :memory: aggr 'seed)))
 

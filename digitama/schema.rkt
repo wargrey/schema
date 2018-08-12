@@ -31,7 +31,7 @@
                     [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
                     [default-order-by (parse-order-by #'order-by (map syntax-e (syntax->list #'(field ...))))]
                     [([view? table-rowid ...]
-                      [(FieldDatum :field table-field list-table-field field-contract FieldType MaybeNull on-update [defval ...] field-examples
+                      [(FieldDatum FieldType :field table-field list-table-field field-contract on-update [defval ...] field-examples
                                    dbfield DBType field-guard not-null unique) ...]
                       [#%Table Table-List Table-Field]
                       [table? table-list? #%table make-table-message make-table->message table->hash hash->table
@@ -44,8 +44,8 @@
                        (define-values (sdleif sdiwor)
                          (for/fold ([sdleif null] [sdiwor null])
                                    ([stx (in-syntax #'([field DataType constraints ...] ...))])
-                           (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
-                           (values (cons (cons #'SQL-Datum field-info) sdleif)
+                           (define-values (maybe-pkref ftype field-info) (parse-field-definition tablename pkids stx))
+                           (values (cons (list* #'SQL-Datum (if (pair? ftype) #`(U #,(car ftype) #,(cdr ftype)) ftype) field-info) sdleif)
                                    (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor))
                              (reverse sdleif)
@@ -61,8 +61,8 @@
                     [([mkargs ...] [reargs ...])
                      (for/fold ([syns (list null null)])
                                ([:fld (in-syntax #'(:field ...))]
-                                [mkarg (in-syntax #'([field : (U FieldType MaybeNull) defval ...] ...))]
-                                [rearg (in-syntax #'([field : (U FieldType MaybeNull Void) on-update] ...))])
+                                [mkarg (in-syntax #'([field : FieldType defval ...] ...))]
+                                [rearg (in-syntax #'([field : (U FieldType Void) on-update] ...))])
                        (list (cons :fld (cons mkarg (car syns)))
                              (cons :fld (cons rearg (cadr syns)))))]
                     [contract-literals #'(list 'field-contract ... 'record-contract)]
@@ -71,9 +71,9 @@
                                           #'(vector (racket->sql-pk (table-rowid self)) ...))])
        #'(begin (define-type Table table)
                 (define-type #%Table RowidType)
-                (define-type Table-List (List (U FieldType MaybeNull) ...))
+                (define-type Table-List (List FieldType ...))
                 (define-type Table-Field (U 'field ...))
-                (struct table schema ([field : (U FieldType MaybeNull)] ...) #:transparent #:constructor-name unsafe-table)
+                (struct table schema ([field : FieldType] ...) #:transparent #:constructor-name unsafe-table)
                 (define-predicate Table? table)
                 (define-predicate table-list? Table-List)
 
@@ -89,7 +89,7 @@
                   (unsafe-table field ...))
 
                 (define (remake-table [self : (Option Table)] #:unsafe? [unsafe? : Boolean #false] reargs ...) : Table
-                  (let ([field ((inst field-value Table (U FieldType MaybeNull) (U FieldType MaybeNull))
+                  (let ([field ((inst field-value Table FieldType FieldType)
                                 'remake-table 'field self table-field field (thunk (void) defval ...))]
                         ...)
                     (when (not unsafe?)
@@ -126,9 +126,9 @@
                                                            [guard (list field-guard ...)])
                                    (sql->racket sql guard)))))
                 
-                (define table->hash : (-> Table [#:skip-null? Boolean] (Immutable-HashTable Symbol (U FieldType ... MaybeNull ...)))
+                (define table->hash : (-> Table [#:skip-null? Boolean] (Immutable-HashTable Symbol (U FieldType ...)))
                   (lambda [self #:skip-null? [skip? #true]]
-                    ((inst make-dict (U FieldType ... MaybeNull ...))
+                    ((inst make-dict (U FieldType ...))
                      '(field ...) (list (table-field self) ...) skip?)))
 
                 (define hash->table : (-> HashTableTop [#:unsafe? Boolean] Table)
@@ -220,18 +220,24 @@
                   (lambda [dbc function column #:distinct? [distinct? #false]]
                     (do-table-aggregate dbtable function column distinct? dbc)))
 
+                ;;; TODO: define a DSL for `where` clause
+                (define list-table-field : (-> Connection
+                                               [#:order-by (Option Table-Field)] [#:asc? Boolean]
+                                               [#:limit Natural] [#:offset Natural]
+                                               (Listof (U FieldType exn)))
+                  (let ([fieldtype? (make-predicate FieldType)])
+                    (lambda [dbc #:order-by [order-field 'default-order-by] #:asc? [asc? #true] #:limit [limit 0] #:offset [offset 0]]
+                      (do-select-column 'list-table-field 'table 'field 'FieldType
+                                        dbtable dbfield field-guard fieldtype?
+                                        dbc order-field asc? limit offset))))
+                
+                ...
+
                 (define table-examples : (->* () ((Option Symbol)) (Listof Any))
                   (lambda [[fname #false]]
                     (case fname
                       [(field) (check-example field-examples (thunk (list defval ...)))] ...
-                      [else (map table-examples '(field ...))])))
-
-                
-                #;(define (list-table-list) : (Listof (U FieldType MaybeNull))
-                  )
-
-                #;...
-                ))]))
+                      [else (map table-examples '(field ...))])))))]))
 
 (define-syntax (define-schema stx)
   (syntax-parse stx

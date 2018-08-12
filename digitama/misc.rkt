@@ -19,6 +19,18 @@
           (or (caar stacks)
               (use-next-id (cdr stacks))))))
 
+
+(define-syntax (make-schema-error stx)
+  (syntax-parse stx
+    [(_ [st:id sqlstat info] frmt:str v ...)
+     #'(make-schema-error [st sqlstat info] (#%function) frmt v ...)]
+    [(_ [st:id sqlstat info] src frmt:str v ...)
+     #'(let ([message (format (string-append "~s: " frmt) src v ...)])
+         (st message (current-continuation-marks)
+             sqlstat (list* (cons 'code sqlstat)
+                            (cons 'message message)
+                            info)))]))
+
 (define-syntax (throw stx)
   (syntax-parse stx
     [(_ st:id rest ...)
@@ -31,13 +43,9 @@
 (define-syntax (schema-throw stx)
   (syntax-parse stx
     [(_ [st:id sqlstat info] frmt:str v ...)
-     #'(schema-throw [st sqlstat info] (#%function) frmt v ...)]
+     #'(raise (make-schema-error [st sqlstat info] frmt v ...))]
     [(_ [st:id sqlstat info] src frmt:str v ...)
-     #'(let ([message (format (string-append "~s: " frmt) src v ...)])
-         (raise (st message (current-continuation-marks)
-                    sqlstat (list* (cons 'code sqlstat)
-                                   (cons 'message message)
-                                   info))))]))
+     #'(raise (make-schema-error [st sqlstat info] src frmt v ...))]))
 
 (define-type (Listof+ schema) (Pairof schema (Listof schema)))
 
