@@ -76,11 +76,12 @@
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbname)))
       (apply query dbc up.sql (append metrics rowid)))))
 
-(define do-table-aggregate : (-> String Symbol Symbol Boolean Connection (Option Flonum))
+(define do-table-aggregate : (-> String Symbol Symbol Boolean Connection (Option (U Flonum Integer)))
   (lambda [dbtable function column distinct? dbc]
     (define aggr.sql : Virtual-Statement (aggregate.sql dbtable function column distinct?))
     (define v : SQL-Datum (query-maybe-value dbc aggr.sql))
     (cond [(flonum? v) v]
+          [(exact-integer? v) v]
           [(real? v) (real->double-flonum v)]
           [else #false])))
 

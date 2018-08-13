@@ -67,11 +67,13 @@
                       (cons (datum->syntax stx (cons 'Vector (make-list (length ids) 'SQL-Datum)))
                             (map (λ [<id>] (list <id> (id->sql <id>))) ids)))]))
 
-  (define (parse-order-by stx fields)
+  (define (parse-order-by stx fields <table>)
     (define (order-id <order> fields)
       (define order (syntax-e <order>))
       (cond [(memq order fields) order]
             [else (raise-syntax-error 'parse-order-by "#:order-by column is not defined" <order>)]))
+    (when (null? fields)
+      (raise-syntax-error 'define-table "a table or view should have at least one column" <table>))
     (syntax-parse stx
       [id:id (datum->syntax stx (order-id #'id fields))]
       [sexp #'#false])))
