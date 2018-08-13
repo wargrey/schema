@@ -117,8 +117,9 @@
                (string-join=$i (dbsystem-name dbms)
                                rowid " AND " 0))))))
 
-(define aggregate.sql : (-> String Symbol Symbol Boolean Virtual-Statement)
-  (lambda [table function column distinct?]
+(define aggregate.sql : (-> String Symbol (Option Symbol) Boolean Virtual-Statement)
+  (lambda [table function maybe-column distinct?]
+    (define column : Symbol (or maybe-column '*))
     (virtual-statement
      (case function
        [(average)

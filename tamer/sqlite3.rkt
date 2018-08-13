@@ -19,18 +19,18 @@
      [name     : String        #:not-null #:unique #:check (string-contains? name ":")]
      [ctime    : Fixnum        #:default (current-milliseconds)]
      [mtime    : Fixnum        #:auto (current-milliseconds)]
-     [seed     : Fixnum        #:default (random 256)])))
+     [seed     : String        #:default (number->string (random 256))])))
 
 (define :memory: : Connection (sqlite3-connect #:database 'memory))
 (sqlite3-version :memory:)
 
 (with-handlers ([exn? (λ [[e : exn]] (pretty-write (exn->schema-message e) /dev/stderr))])
-  (create-sqlite-master :memory:))
+  (sqlite-master:create :memory:))
 
 (newline)
-(create-master :memory:)
+(master:create :memory:)
 (sqlite3-table-info :memory: 'master #("type" "notnull" "pk"))
-(select-sqlite-master :memory:)
+(sqlite-master:select :memory:)
 
 (with-handlers ([exn:schema? (λ [[e : exn:schema]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
   (make-master #:name "[awkward]"))
@@ -42,27 +42,27 @@
                  #:name (symbol->string (gensym 'master:)))))
 
 (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
-  (insert-master :memory: masters)
-  (insert-master :memory: masters))
+  (master:insert :memory: masters)
+  (master:insert :memory: masters))
 
-(select-master :memory: #:asc? #false #:limit 4)
-(cons 'seed (list-master-seed :memory:))
-(for/list : (Listof Any) ([aggr : Symbol (in-list '(count min average max sum))])
-  (cons aggr (master-aggregate :memory: aggr 'seed)))
+(master:select :memory: #:asc? #false #:limit 4)
+(cons 'seed (?master-seed :memory:))
+(for/list : (Listof Any) ([aggr (in-list (list ?master:count ?master:min ?master:average ?master:max ?master:sum))])
+  (cons (object-name aggr) (aggr :memory: 'seed)))
 
 (newline)
 (for ([record (in-master :memory:)] [idx (in-naturals)])
   (when (master? record)
-    (cond [(< idx (quotient plan 2)) (delete-master :memory: record)]
-          [(< idx (* (quotient plan 4) 3)) (update-master :memory: (remake-master record))]
+    (cond [(< idx (quotient plan 2)) (master:delete :memory: record)]
+          [(< idx (* (quotient plan 4) 3)) (master:update :memory: (remake-master record))]
           [else (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (exn:fail:sql-info e) /dev/stderr))])
-                  (update-master :memory: #:check-first? (odd? idx) (remake-master record #:uuid (pk64:random))))])))
+                  (master:update :memory: #:check-first? (odd? idx) (remake-master record #:uuid (pk64:random))))])))
 
 (newline)
 (for/list : (Listof Any) ([m (in-list masters)])
   (define uuids : #%Master (#%master m))
   (with-handlers ([exn? values])
-    (define ?m : (Option Master) (seek-master :memory: #:where uuids))
+    (define ?m : (Option Master) (master:seek :memory: #:where uuids))
     (cond [(false? ?m) (cons uuids 'deleted)]
           [(eq? (master-ctime ?m) (master-mtime ?m)) (cons uuids 'unchanged)]
           [else ?m])))

@@ -3,7 +3,6 @@
 (provide (all-defined-out))
 
 (require racket/sequence)
-(require racket/list)
 
 (require typed/db/base)
 
@@ -76,14 +75,10 @@
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbname)))
       (apply query dbc up.sql (append metrics rowid)))))
 
-(define do-table-aggregate : (-> String Symbol Symbol Boolean Connection (Option (U Flonum Integer)))
+(define do-table-aggregate : (-> String Symbol (Option Symbol) Boolean Connection SQL-Datum)
   (lambda [dbtable function column distinct? dbc]
     (define aggr.sql : Virtual-Statement (aggregate.sql dbtable function column distinct?))
-    (define v : SQL-Datum (query-maybe-value dbc aggr.sql))
-    (cond [(flonum? v) v]
-          [(exact-integer? v) v]
-          [(real? v) (real->double-flonum v)]
-          [else #false])))
+    (query-maybe-value dbc aggr.sql)))
 
 (define do-select-column : (All (a) (-> Symbol Symbol Symbol Any String String (-> String Any) (-> Any Boolean : a)
                                         Connection (Option Symbol) Boolean Natural Natural

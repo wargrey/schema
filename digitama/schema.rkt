@@ -31,33 +31,37 @@
                     [(RowidType [rowid dbrowid] ...) (parse-primary-key #'primary-key)]
                     [default-order-by (parse-order-by #'order-by (map syntax-e (syntax->list #'(field ...))) #'tbl)]
                     [([view? table-rowid ...]
-                      [(FieldDatum :field table-field list-table-field FieldType field-contract on-update [defval ...] field-examples
-                                   dbfield DBType field-guard not-null unique) ...]
-                      [#%Table Table-List Table-Field]
-                      [table? table-list? #%table make-table-message make-table->message table->hash hash->table
-                              table->list list->table table->row row->table]
-                      [unsafe-table make-table remake-table create-table insert-table delete-table update-table in-table select-table seek-table]
-                      [table-serialize table-deserialize table-aggregate table-examples])
-                     (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))]
-                           [TableName (syntax-e #'Table)]
-                           [tablename (syntax-e #'table)])
+                      [(FieldDatum :field table-field ?table-field FieldType field-contract on-update [defval ...] field-examples
+                                   dbfield DBType field-guard not-null unique) ...])
+                     (let ([pkids (let ([pk (syntax->datum #'primary-key)]) (if (list? pk) pk (list pk)))])
                        (define-values (sdleif sdiwor)
                          (for/fold ([sdleif null] [sdiwor null])
                                    ([stx (in-syntax #'([field DataType constraints ...] ...))])
-                           (define-values (maybe-pkref field-info) (parse-field-definition tablename pkids stx))
+                           (define-values (maybe-pkref field-info) (parse-field-definition (syntax-e #'table) pkids stx))
                            (values (cons (cons #'SQL-Datum field-info) sdleif)
                                    (if maybe-pkref (cons maybe-pkref sdiwor) sdiwor))))
                        (list (cons (< (length sdiwor) (length pkids)) (reverse sdiwor))
-                             (reverse sdleif)
-                             (for/list ([fmt (in-list (list "#%~a" "~a-List" "~a-Field"))])
-                               (format-id #'Table fmt TableName))
-                             (for/list ([fmt (in-list (list "~a?" "~a-list?" "#%~a" "make-~a-message" "make-~a->message"
-                                                            "~a->hash" "hash->~a" "~a->list" "list->~a" "~a->row" "row->~a"))])
-                               (format-id #'table fmt tablename))
-                             (for/list ([prefix (in-list (list 'unsafe 'make 'remake 'create 'insert 'delete 'update 'in 'select 'seek))])
-                               (format-id #'table "~a-~a" prefix tablename))
-                             (for/list ([suffix (in-list (list 'serialize 'deserialize 'aggregate 'examples))])
-                               (format-id #'table "~a-~a" tablename suffix))))]
+                             (reverse sdleif)))]
+                    [([#%Table Table-List Table-Field]
+                      [unsafe-table make-table remake-table table? table-list? #%table in-table make-table-message make-table->message
+                                    table->hash hash->table table->list list->table table->row row->table]
+                      [table:create table:insert table:delete table:update table:select table:seek]
+                      [table-serialize table-deserialize table-examples]
+                      [?table:count ?table:min ?table:average ?table:max ?table:sum])
+                     (let ([TableName (syntax-e #'Table)]
+                           [tablename (syntax-e #'table)])
+                       (list (for/list ([fmt (in-list (list '#%~a '~a-List '~a-Field))])
+                               (format-id #'Table (symbol->string fmt) TableName))
+                             (for/list ([fmt (in-list (list 'unsafe-~a 'make-~a 'remake-~a '~a? '~a-list? '#%~a 'in-~a
+                                                            '~a->hash 'hash->~a '~a->list 'list->~a '~a->row 'row->~a
+                                                            'make-~a-message 'make-~a->message))])
+                               (format-id #'table (symbol->string fmt) tablename))
+                             (for/list ([suffix (in-list (list 'create 'insert 'delete 'update 'select 'seek))])
+                               (format-id #'table "~a:~a" tablename suffix))
+                             (for/list ([suffix (in-list (list 'serialize 'deserialize 'examples))])
+                               (format-id #'table "~a-~a" tablename suffix))
+                             (for/list ([suffix (in-list (list 'count 'min 'average 'max 'sum))])
+                               (format-id #'table "?~a:~a" tablename suffix))))]
                     [([mkargs ...] [reargs ...])
                      (for/fold ([syns (list null null)])
                                ([:fld (in-syntax #'(:field ...))]
@@ -163,31 +167,31 @@
                     (λ [[occurrence : (U Table exn)]]
                       (make-table-message manipulation occurrence serialize #:urgent urgent))))
                   
-                (define create-table : (-> Connection [#:if-not-exists? Boolean] Void)
+                (define table:create : (-> Connection [#:if-not-exists? Boolean] Void)
                   (lambda [dbc #:if-not-exists? [silent? #false]]
-                    (do-create-table 'create-table view? silent? dbc
+                    (do-create-table 'table:create view? silent? dbc
                                      dbtable '(dbrowid ...) '(dbfield ...) '(DBType ...)
                                      '(not-null ...) '(unique ...))))
                   
-                (define insert-table : (-> Connection (U Table (Listof Table)) [#:or-replace? Boolean] Void)
+                (define table:insert : (-> Connection (U Table (Listof Table)) [#:or-replace? Boolean] Void)
                   (lambda [dbc selves #:or-replace? [replace? #false]]
-                    (do-insert-table 'insert-table view? replace? dbtable '(dbfield ...) dbc
+                    (do-insert-table 'table:insert view? replace? dbtable '(dbfield ...) dbc
                                      (if (table? selves) (in-value selves) (in-list selves))
                                      (list table-field ...))))
                   
-                (define delete-table : (-> Connection (U Table (Listof Table)) Void)
+                (define table:delete : (-> Connection (U Table (Listof Table)) Void)
                   (lambda [dbc selves]
-                    (do-delete-from-table 'delete-table view? dbtable '(dbrowid ...) dbc
+                    (do-delete-from-table 'table:delete view? dbtable '(dbrowid ...) dbc
                                           (if (table? selves) (in-value selves) (in-list selves))
                                           (list table-rowid ...))))
                   
-                (define select-table : (-> Connection
+                (define table:select : (-> Connection
                                            [#:where (U RowidType (Pairof String (Listof Any)) False)]
                                            [#:fetch (U Positive-Integer +inf.0)]
                                            [#:order-by (Option Table-Field)] [#:asc? Boolean]
                                            [#:limit Natural] [#:offset Natural]
                                            (Listof (U Table exn)))
-                  (let ([mkrow : (-> (Listof SQL-Datum) Table) (λ [src] (row->table src #:strict? #false #:alt-fname 'select-table))])
+                  (let ([mkrow : (-> (Listof SQL-Datum) Table) (λ [src] (row->table src #:strict? #false #:alt-fname 'table:select))])
                     (lambda [dbc #:where [where #false] #:fetch [size +inf.0]
                                  #:order-by [order-field 'default-order-by] #:asc? [asc? #true]
                                  #:limit [limit 0] #:offset [offset 0]]
@@ -207,32 +211,51 @@
                       (do-select-table dbtable where '(dbrowid ...) '(dbfield ...) mkrow
                                        dbc size order-field asc? limit offset))))
                   
-                (define seek-table : (-> Connection #:where (U RowidType (Pairof String (Listof Any))) (Option Table))
-                  (let ([mkrow : (-> (Vectorof SQL-Datum) Table) (λ [src] (row->table src #:strict? #false #:alt-fname 'seek-table))])
+                (define table:seek : (-> Connection #:where (U RowidType (Pairof String (Listof Any))) (Option Table))
+                  (let ([mkrow : (-> (Vectorof SQL-Datum) Table) (λ [src] (row->table src #:strict? #false #:alt-fname 'table:seek))])
                     (lambda [dbc #:where where]
                       (do-seek-table dbtable where '(dbrowid ...) '(dbfield ...) mkrow dbc))))
                   
-                (define update-table : (-> Connection (U Table (Listof Table)) [#:check-first? Boolean] Void)
+                (define table:update : (-> Connection (U Table (Listof Table)) [#:check-first? Boolean] Void)
                   (lambda [dbc selves #:check-first? [check? #true]]
-                    (do-update-table 'update-table view? 'table check? dbtable '(dbrowid ...) '(dbfield ...)
+                    (do-update-table 'table:update view? 'table check? dbtable '(dbrowid ...) '(dbfield ...)
                                      dbc (if (table? selves) (in-value selves) (in-list selves))
                                      (list table-field ...) (list table-rowid ...))))
                   
-                (define table-aggregate : (-> Connection Symbol Table-Field [#:distinct? Boolean] (Option (U Flonum Integer)))
-                  (lambda [dbc function column #:distinct? [distinct? #false]]
-                    (do-table-aggregate dbtable function column distinct? dbc)))
+                (define ?table:count : (->* (Connection) ((Option Table-Field) #:distinct? Boolean) Natural)
+                  (lambda [dbc [column #false] #:distinct? [distinct? #false]]
+                    (assert (do-table-aggregate dbtable 'count column distinct? dbc) exact-nonnegative-integer?)))
+
+                (define ?table:min : (-> Connection Table-Field [#:distinct? Boolean] SQL-Datum)
+                  (lambda [dbc column #:distinct? [distinct? #false]]
+                    (do-table-aggregate dbtable 'min column distinct? dbc)))
+                
+                (define ?table:average : (-> Connection Table-Field [#:distinct? Boolean] (Option Flonum))
+                  (lambda [dbc column #:distinct? [distinct? #false]]
+                    (define mean : SQL-Datum (do-table-aggregate dbtable 'average column distinct? dbc))
+                    (and (flonum? mean) mean)))
+                
+                (define ?table:max : (-> Connection Table-Field [#:distinct? Boolean] SQL-Datum)
+                  (lambda [dbc column #:distinct? [distinct? #false]]
+                    (do-table-aggregate dbtable 'max column distinct? dbc)))
+                
+                (define ?table:sum : (-> Connection Table-Field [#:distinct? Boolean] (Option (U Integer Flonum)))
+                  (lambda [dbc column #:distinct? [distinct? #false]]
+                    (define sum : SQL-Datum (do-table-aggregate dbtable 'sum column distinct? dbc))
+                    (cond [(exact-integer? sum) sum]
+                          [(flonum? sum) sum]
+                          [else #false])))
                   
                 ;;; TODO: define a DSL for `where` clause
-                (define list-table-field : (-> Connection
-                                               [#:order-by (Option Table-Field)] [#:asc? Boolean]
-                                               [#:limit Natural] [#:offset Natural]
-                                               (Listof (U FieldType exn)))
+                (define ?table-field : (-> Connection
+                                           [#:order-by (Option Table-Field)] [#:asc? Boolean]
+                                           [#:limit Natural] [#:offset Natural]
+                                           (Listof (U FieldType exn)))
                   (let ([fieldtype? (make-predicate FieldType)])
                     (lambda [dbc #:order-by [order-field 'default-order-by] #:asc? [asc? #true] #:limit [limit 0] #:offset [offset 0]]
-                      (do-select-column 'list-table-field 'table 'field 'FieldType
+                      (do-select-column '?table-field 'table 'field 'FieldType
                                         dbtable dbfield field-guard fieldtype?
                                         dbc order-field asc? limit offset))))
-                  
                 ...
 
                 (define table-examples : (->* () ((Option Symbol)) (Listof Any))

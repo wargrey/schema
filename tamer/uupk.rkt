@@ -26,9 +26,9 @@
 (define do-insert : (-> UUPK Void)
   (lambda [record]
     (with-handlers ([exn:fail:sql? (λ [[e : exn:fail:sql]] (pretty-write (cons record (exn:fail:sql-info e)) (current-error-port)))])
-      (insert-uupk :memory: record))))
+      (uupk:insert :memory: record))))
 
-(create-uupk :memory:)
+(uupk:create :memory:)
 
 (define pks : (Listof (Listof (Futureof (Listof UUPK))))
   (for/list ([pk64 (in-list (list pk64:timestamp pk64:random))])
@@ -38,7 +38,7 @@
   (for ([workers : (Futureof (Listof UUPK)) (in-list jobs)])
     (map do-insert (touch workers))))
 
-(select-uupk :memory: #:where (list "pk <  ~a" 5000000000000000000))
-(select-uupk :memory: #:where (list "pk >= ~a and type = ~a" 5000000000000000000 'pk64:random))
+(uupk:select :memory: #:where (list "pk <  ~a" 5000000000000000000))
+(uupk:select :memory: #:where (list "pk >= ~a and type = ~a" 5000000000000000000 'pk64:random))
 
 (disconnect :memory:)
