@@ -8,57 +8,74 @@
 
 (define empty-field : CSV-Field "")
 
+(define csv-read : (-> Input-Port Boolean Char Char (Option Char) (Listof (Listof CSV-Field)))
+  (lambda [/dev/csvin skipheader? delimiter quotechar commentchar]
+    (unless (not skipheader?)
+      (read-line /dev/csvin))
+    (if (char? commentchar)
+        (let read-row ([swor : (Listof (Listof CSV-Field)) null])
+          (define maybe-char : (U EOF Char) (peek-char /dev/csvin))
+          (cond [(eof-object? maybe-char) (reverse swor)]
+                [(eqv? maybe-char commentchar) (read-line /dev/csvin) (read-row swor)]
+                [else (let-values ([(row more?) (read-csv-row /dev/csvin delimiter quotechar)])
+                        (cond [(not more?) (reverse (cons row swor))]
+                              [else (read-row (cons row swor))]))]))
+        (let read-row ([swor : (Listof (Listof CSV-Field)) null])
+          (define-values (row more?) (read-csv-row /dev/csvin delimiter quotechar))
+          (cond [(not more?) (reverse (cons row swor))]
+                [else (read-row (cons row swor))])))))
+
 (define read-csv-row : (-> Input-Port Char Char (Values (Listof CSV-Field) Boolean))
-  (lambda [/dev/csvin separator dquote]
+  (lambda [/dev/csvin delimiter quotechar]
     (let read-this-row ([sdleif : (Listof String) null])
       (define maybe-char : (U Char EOF) (read-char /dev/csvin))
       (cond [(eof-object? maybe-char) (values (reverse (cons empty-field sdleif)) #false)]
-            [else (let-values ([(field more?) (csv-read-field /dev/csvin maybe-char separator dquote)])
+            [else (let-values ([(field more?) (csv-read-field /dev/csvin maybe-char delimiter quotechar)])
                     (cond [(and more?) (read-this-row (cons field sdleif))]
                           [else (values (reverse (cons field sdleif))
                                         (not (eof-object? (peek-char /dev/csvin))))]))]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-read-field : (-> Input-Port Char Char Char (Values CSV-Field Boolean))
-  (lambda [/dev/csvin leading-char separator dquote]
+  (lambda [/dev/csvin leading-char delimiter quotechar]
     (let read-this-field ([srahc : (Listof Char) null]
                           [maybe-char : (U Char EOF) leading-char])
       (cond [(eof-object? maybe-char) (values (list->string (reverse srahc)) #false)]
-            [(eqv? maybe-char separator) (values (reversed-list->field srahc) #true)]
-            [(eqv? maybe-char dquote) (csv-read-dquoted-field /dev/csvin srahc separator dquote)]
+            [(eqv? maybe-char delimiter) (values (reversed-list->field srahc) #true)]
+            [(eqv? maybe-char quotechar) (csv-read-quoted-field /dev/csvin srahc delimiter quotechar)]
             [(csv-newline? maybe-char /dev/csvin) (values (reversed-list->field srahc) #false)]
             [else (read-this-field (cons maybe-char srahc) (read-char /dev/csvin))]))))
 
-(define csv-read-dquoted-field : (-> Input-Port (Listof Char) Char Char (Values CSV-Field Boolean))
-  (lambda [/dev/csvin leading-srahc separator dquote]
+(define csv-read-quoted-field : (-> Input-Port (Listof Char) Char Char (Values CSV-Field Boolean))
+  (lambda [/dev/csvin leading-srahc delimiter quotechar]
     ;; NOTE
     ; No matter the leading and trailing whitespaces should be skipped or not,
     ; we tolerate the whitespaces around the quoted field but do not count them as part of the field.
     (unless (andmap char-whitespace? leading-srahc)
-      (csv-log-syntax-error /dev/csvin "ignored non-whitespace chars before dquote char"))
-    (let read-this-dquoted-field ([srahc : (Listof Char) null])
+      (csv-log-syntax-error /dev/csvin "ignored non-whitespace chars before quote char"))
+    (let read-this-quoted-field ([srahc : (Listof Char) null])
       (define maybe-char : (U Char EOF) (read-char /dev/csvin))
       (cond [(eof-object? maybe-char)
              (csv-log-syntax-error /dev/csvin "unexpected eof of file")
              (values (reversed-list->field srahc) #false)]
-            [(eqv? maybe-char dquote)
+            [(eqv? maybe-char quotechar)
              (define next-char : (U Char EOF) (read-char /dev/csvin))
              (cond [(eof-object? next-char) (values (reversed-list->field srahc) #false)]
-                   [(eqv? next-char separator) (values (reversed-list->field srahc) #true)]
+                   [(eqv? next-char delimiter) (values (reversed-list->field srahc) #true)]
                    [(csv-newline? next-char /dev/csvin) (values (reversed-list->field srahc) #false)]
-                   [(eqv? next-char dquote) (read-this-dquoted-field (cons maybe-char srahc))]
-                   [else (values (reversed-list->field srahc) (csv-skip-dquoted-field /dev/csvin separator next-char))])]
-            [else (read-this-dquoted-field (cons maybe-char srahc))]))))
+                   [(eqv? next-char quotechar) (read-this-quoted-field (cons maybe-char srahc))]
+                   [else (values (reversed-list->field srahc) (csv-skip-quoted-rest /dev/csvin delimiter next-char))])]
+            [else (read-this-quoted-field (cons maybe-char srahc))]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define csv-skip-dquoted-field : (-> Input-Port Char Char Boolean)
-  (lambda [/dev/csvin separator leading-char]
+(define csv-skip-quoted-rest : (-> Input-Port Char Char Boolean)
+  (lambda [/dev/csvin delimiter leading-char]
     (let skip-this-field ([srahc : (Listof Char) (list leading-char)]
                     [valid? : Boolean (char-whitespace? leading-char)])
       (define maybe-char : (U Char EOF) (read-char /dev/csvin))
-      ;;; TODO: what if the dquote char shows again?
+      ;;; TODO: what if the quotechar char shows again?
       (cond [(eof-object? maybe-char) (csv-log-if-invalid /dev/csvin valid?) #false]
-            [(eqv? maybe-char separator) (csv-log-if-invalid /dev/csvin valid?) #true]
+            [(eqv? maybe-char delimiter) (csv-log-if-invalid /dev/csvin valid?) #true]
             [(csv-newline? maybe-char /dev/csvin) (csv-log-if-invalid /dev/csvin valid?) #false]
             [else (skip-this-field (cons maybe-char srahc) (and valid? (char-whitespace? maybe-char)))]))))
 
@@ -99,4 +116,4 @@
 (define csv-log-if-invalid : (-> Input-Port Boolean Void)
   (lambda [/dev/csvin valid?]
     (when (not valid?)
-      (csv-log-syntax-error /dev/csvin "ignored non-whitespace chars after dquote char"))))
+      (csv-log-syntax-error /dev/csvin "ignored non-whitespace chars after quote char"))))
