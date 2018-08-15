@@ -20,6 +20,9 @@ air, moon roof, loaded',4799.00\n\n"
  (current-error-port)
  (λ [] (for ([row (in-list wikipedia-examples)])
          (define /dev/csvin : Input-Port (open-input-string row))
-         (define-values (fields more?) (read-csv-row /dev/csvin #\, #\'))
-         (printf "~s: ~s[~a]~n" row fields more?)))
+         (define fields (read-csv-row* /dev/csvin #\, #\'))
+         (printf "~s~n ==> ~s~n #:n ~a~n #:empty? ~a~n #:more? ~a~n~n"
+                 row fields (length fields)
+                 (csv-empty-line? fields)
+                 (not (eof-object? (peek-char /dev/csvin))))))
  'debug)
