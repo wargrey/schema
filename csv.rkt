@@ -10,7 +10,7 @@
   (lambda [/dev/csvin n skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
     (cond [(input-port? /dev/csvin)
            (port-count-lines! /dev/csvin)
-           (csv-read /dev/csvin (assert n index?) skip-header? (or dialect csv::wargrey) strict?)]
+           (reverse (csv-read/reversed /dev/csvin (assert n index?) skip-header? (or dialect csv::wargrey) strict?))]
           [(not (file-exists? /dev/csvin)) null]
           [else (call-with-input-file* /dev/csvin
                   (λ [[/dev/csvin : Input-Port]]
@@ -23,7 +23,7 @@
   (lambda [/dev/csvin skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
     (cond [(input-port? /dev/csvin)
            (port-count-lines! /dev/csvin)
-           (csv-read* /dev/csvin skip-header? (or dialect csv::wargrey) strict?)]
+           (reverse (csv-read*/reversed /dev/csvin skip-header? (or dialect csv::wargrey) strict?))]
           [(not (file-exists? /dev/csvin)) null]
           [else (call-with-input-file* /dev/csvin
                   (λ [[/dev/csvin : Input-Port]]
