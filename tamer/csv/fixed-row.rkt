@@ -3,19 +3,17 @@
 (require "../../csv.rkt")
 
 (require racket/logging)
+(require racket/path)
+
+(require syntax/location)
 
 (port-count-lines-enabled #true)
 
-(define csv::test : CSV-Dialect (make-csv-dialect #:delimiter #\, #:quote-char #\' #:skip-empty-line? #false))
-
-(define examples : (Listof String)
-  (list "Year,Make,Model,Price"
-        "1997,Ford,E350,'ac, abs, moon',3000.00"
-        "1996,Jeep,Grand Cherokee,'Venture ''Extended Edition''',4799.00,'MUST SELL!\r\nair, moon roof, loaded'"))
+(define fixed-row.csv : Path-String (assert (file-name-from-path (path-replace-extension (quote-source-file) #".csv")) path?))
 
 ((inst with-logging-to-port (Listof (Vectorof CSV-Field)))
  (current-error-port)
- (λ [] (for/list : (Listof (Vectorof CSV-Field)) ([row (in-list examples)])
-         (define /dev/csvin : Input-Port (open-input-string row))
-         (car (read-csv /dev/csvin 5 #false #:dialect csv::test))))
+ (λ [] (call-with-input-file* fixed-row.csv
+         (λ [[/dev/csvin : Input-Port]]
+           (read-csv /dev/csvin 5 #true))))
  'debug)
