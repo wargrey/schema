@@ -24,7 +24,7 @@
    [comment-char : (Option Char)]
    [skip-empty-line? : Boolean]
    [skip-leading-space? : Boolean]
-   [skip-tailing-space? : Boolean])
+   [skip-trailing-space? : Boolean])
   #:transparent)
 
 (define csv-read/reversed : (-> Input-Port Positive-Index Boolean CSV-Dialect Boolean (Listof (Vectorof CSV-Field)))
@@ -35,7 +35,7 @@
     (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
     (define trim-line? : Boolean (CSV-Dialect-skip-empty-line? dialect))
     (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
-    (define trim-right? : Boolean (CSV-Dialect-skip-tailing-space? dialect))
+    (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
 
     (unless (not skipheader?)
       (read-line /dev/csvin))
@@ -55,7 +55,7 @@
     (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
     (define trim-line? : Boolean (CSV-Dialect-skip-empty-line? dialect))
     (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
-    (define trim-right? : Boolean (CSV-Dialect-skip-tailing-space? dialect))
+    (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
 
     (unless (not skipheader?)
       (read-line /dev/csvin))

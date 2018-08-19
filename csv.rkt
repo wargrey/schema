@@ -37,11 +37,11 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define make-csv-dialect : (-> [#:delimiter Char] [#:quote-char Char] [#:escape-char (Option Char)] [#:comment-char (Option Char)]
-                               [#:skip-empty-line? Boolean] [#:skip-leading-space? Boolean] [#:skip-tailing-space? Boolean]
+                               [#:skip-empty-line? Boolean] [#:skip-leading-space? Boolean] [#:skip-trailing-space? Boolean]
                                CSV-Dialect)
   (let ([<eq?>-char? : (-> (Option Char) Boolean) (λ [ch] (or (not ch) (char<? ch #\Ā)))])
     (lambda [#:delimiter [<:> #\,] #:quote-char [</> #\"] #:escape-char [<\> #false] #:comment-char [<#> #false]
-             #:skip-empty-line? [skip-empty-line? #true] #:skip-leading-space? [trim-left? #false] #:skip-tailing-space? [trim-right? #false]]
+             #:skip-empty-line? [skip-empty-line? #true] #:skip-leading-space? [trim-left? #false] #:skip-trailing-space? [trim-right? #false]]
       (assert <:> <eq?>-char?)
       (assert </> <eq?>-char?)
       (assert <\> <eq?>-char?)
