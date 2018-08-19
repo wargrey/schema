@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
-(provide (all-defined-out) CSV-Field)
+(provide (all-defined-out))
+(provide CSV-Field CSV-Dialect)
 
 (require "digitama/exchange/csv.rkt")
 
@@ -30,13 +31,24 @@
                     (read-csv* #:dialect dialect #:strict? strict?
                                /dev/csvin skip-header?)))])))
 
+(define csv-empty-line? : (-> (Listof CSV-Field) Boolean)
+  (lambda [row]
+    (eq? row empty-row)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define make-csv-dialect : (-> [#:delimiter Char] [#:quote-char Char] [#:comment-char (Option Char)] [#:escape-char (Option Char)]
-                               [#:skip-leading-space? Boolean] [#:skip-tailing-space? Boolean]
+(define make-csv-dialect : (-> [#:delimiter Char] [#:quote-char Char] [#:escape-char (Option Char)] [#:comment-char (Option Char)]
+                               [#:skip-empty-line? Boolean] [#:skip-leading-space? Boolean] [#:skip-tailing-space? Boolean]
                                CSV-Dialect)
-  (lambda [#:delimiter [delimiter #\,] #:quote-char [quotes #\"] #:comment-char [comment-char #false] #:escape-char [escape-char #false]
-           #:skip-leading-space? [trim-left? #false] #:skip-tailing-space? [trim-right? #false]]
-    (csv-dialect delimiter quotes comment-char escape-char trim-left? trim-right?)))
+  (let ([<eq?>-char? : (-> (Option Char) Boolean) (λ [ch] (or (not ch) (char<? ch #\Ā)))])
+    (lambda [#:delimiter [<:> #\,] #:quote-char [</> #\"] #:escape-char [<\> #false] #:comment-char [<#> #false]
+             #:skip-empty-line? [skip-empty-line? #true] #:skip-leading-space? [trim-left? #false] #:skip-tailing-space? [trim-right? #false]]
+      (assert <:> <eq?>-char?)
+      (assert </> <eq?>-char?)
+      (assert <\> <eq?>-char?)
+      (assert <#> <eq?>-char?)
+      
+      (CSV-Dialect <:> </> (if (eq? </> <\>) #false <\>) <#>
+                   skip-empty-line? trim-left? trim-right?))))
 
 (define csv::wargrey : CSV-Dialect (make-csv-dialect))
 (define csv::unix : CSV-Dialect (make-csv-dialect #:delimiter #\: #:comment-char #\# #:escape-char #\\))

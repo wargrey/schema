@@ -6,23 +6,19 @@
 
 (port-count-lines-enabled #true)
 
-(define wikipedia-examples : (Listof String)
+(define examples : (Listof String)
   (list ",Year,Make,Model,,Description,Price,"
         "1997,Ford,E350,'ac, abs, moon',3000.00\r"
-        "2000,Mercury,Cougar,2.38\r\n"
         "1999,Chevy,'Venture ''Extended Edition''','',4900.00\r\n\r"
-        "1996,Jeep,Grand Cherokee,'MUST SELL!
-air, moon roof, loaded',4799.00\n\n"
+        "1996,Jeep,Grand Cherokee,'MUST SELL!\r\nair, moon roof, loaded',4799.00\n\n"
         "\nwhatever"
         "\r"))
 
 ((inst with-logging-to-port Void)
  (current-error-port)
- (λ [] (for ([row (in-list wikipedia-examples)])
+ (λ [] (for ([row (in-list examples)])
          (define /dev/csvin : Input-Port (open-input-string row))
-         (define-values (fields maybe-char) (read-csv-row* /dev/csvin (read-char /dev/csvin) #\, #\' #false #false #false))
-         (printf "~s~n ==> ~s~n #:n ~a~n #:empty? ~a~n #:next-leader? ~a~n~n"
-                 row fields (length fields)
-                 (csv-empty-line? fields)
-                 maybe-char)))
+         (define-values (fields maybe-char) (read-csv-row* /dev/csvin (read-char /dev/csvin) #false #\, #\' #false #false #false #false))
+         (printf "~s~n ==> ~s~n #:n ~a~n #:next-leader? ~a~n~n"
+                 row fields (if (pair? fields) (length fields) 0) maybe-char)))
  'debug)
