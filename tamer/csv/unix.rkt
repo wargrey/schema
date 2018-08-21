@@ -1,17 +1,17 @@
 #lang typed/racket
 
-(require "../../csv.rkt")
+(require "csv.rkt")
 
 (require racket/logging)
 
 (require syntax/location)
 
-(define passwd.csv : Path-String (assert (file-name-from-path (path-replace-extension (quote-source-file) #".csv")) path?))
+(define passwd.csv : Path-String (#%csv))
 
-((inst with-logging-to-port (Listof (Vectorof CSV-Field)))
+((inst with-logging-to-port (U (Listof (Listof CSV-Field)) (Listof (Vectorof CSV-Field))))
  (current-error-port)
  (λ []
    (call-with-input-file passwd.csv
      (λ [[/dev/csvin : Input-Port]]
-       (read-csv /dev/csvin 7 #false #:dialect csv::unix))))
+       (read-csv* /dev/csvin #false #:dialect csv::unix))))
  'debug)

@@ -6,7 +6,8 @@
 (provide (all-defined-out))
 
 ;;; Performance hints
-;; 1. Comparing with `eq?` is significantly faster than with `eqv?`
+;; 0. Comparing with `eq?` is significantly faster than with `eqv?`
+;; 1. Disable port lines counting improves the second most
 ;; 2. Passing a procedure to the reader is more difficult to be optimized than passing boolean to achieve the same effects
 ;; 3. Avoiding `peek-char`s
 ;; 4. Single line comment is an empty line
@@ -64,8 +65,8 @@
                         [maybe-char : (U EOF Char) (read-char /dev/csvin)])
       (define-values (maybe-row maybe-leader) (read-csv-row* /dev/csvin maybe-char <#> <:> </> <\> strict? trim-left? trim-right?))
       (cond [(not maybe-leader) (if (pair? maybe-row) (cons maybe-row swor) swor)]
-            [(not trim-line?) (read-this-csv (if (pair? maybe-row) (cons empty-row swor) swor) maybe-leader)]
-            [else (read-this-csv swor maybe-leader)]))))
+            [(not trim-line?) (read-this-csv (cons (if (pair? maybe-row) maybe-row empty-row) swor) maybe-leader)]
+            [else (read-this-csv (if (pair? maybe-row) (cons maybe-row swor) swor) maybe-leader)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define read-csv-row : (-> Input-Port Positive-Index (U Char EOF) (Option Char) Char Char (Option Char) Boolean Boolean Boolean Boolean

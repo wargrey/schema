@@ -4,8 +4,6 @@
 
 (require racket/logging)
 
-(port-count-lines-enabled #true)
-
 (define examples : (Listof String)
   (list ",Year,Make,Model,,Description,Price,"
         "1997,Ford,E350,'ac, abs, moon',3000.00\r"
