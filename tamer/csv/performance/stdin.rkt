@@ -2,9 +2,9 @@
 
 (require "../csv.rkt")
 
-(define StateDepartment.csv : Path (build-path (#%dir) "2015_StateDepartment.csv"))
+(define StateDepartment.csv : Path (build-path (#%dir) "StormEvents.csv"))
 
 (define vectors : (Listof (Vectorof CSV-Field))
   (with-logging-to-port (current-error-port)
-    (λ [] (time (read-csv StateDepartment.csv 28 #true)))
+    (λ [] (time (read-csv StateDepartment.csv 11 #true)))
     'debug))

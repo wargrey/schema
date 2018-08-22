@@ -6,7 +6,7 @@
 
 (port-count-lines-enabled #true)
 
-(define StateDepartment.csv : Path (build-path (#%dir) "2015_StateDepartment.csv"))
+(define StateDepartment.csv : Path (build-path (#%dir) "StateDepartment.csv"))
 
 (printf "v: ")
 (define vectors : (Listof (Vectorof CSV-Field))
