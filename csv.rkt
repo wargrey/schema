@@ -43,4 +43,4 @@
                    skip-empty-line? trim-left? trim-right?))))
 
 (define csv::wargrey : CSV-Dialect (make-csv-dialect))
-(define csv::unix : CSV-Dialect (make-csv-dialect #:delimiter #\: #:comment-char #\# #:escape-char #\\))
+(define csv::unix : CSV-Dialect (make-csv-dialect #:delimiter #\: #:quote-char #false #:comment-char #\# #:escape-char #\\))

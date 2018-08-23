@@ -109,4 +109,6 @@ _timed:*:266:266:Time Sync Daemon:/var/db/timed:/usr/bin/false
 
 # Single line comment is also an empty line
 
-inline_comment:*:266:266:The Last Lield Has A Trailing Space:/var/db/timed:/usr/bin/false # You can try inline comments
+inline_comment:*:266:266:The Last Field Has A Trailing Space:/var:/usr/bin/false # You can try inline comments
+escape_pass:\52:\62\628:\x32\x32\x38:C Style Backslash \x6D4b\x8bd5\1660:C\:\\var:C\:\\usr\\bin\\false
+escape_fail:\U2:\62\628:\x32\x32\x38:C Style Backslash \u6D4b\u8bd5\U660:C\:\\var:C\:\\usr\\bin\\false

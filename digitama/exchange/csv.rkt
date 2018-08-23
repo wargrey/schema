@@ -5,7 +5,7 @@
 
 (provide (all-defined-out))
 
-(require racket/fixnum)
+(require racket/unsafe/ops)
 
 ;;; Performance hints
 ;; 0. Comparing with `eq?` is significantly faster than with `eqv?`
@@ -211,52 +211,79 @@
   (lambda [/dev/csvin]
     (define maybe-char : (U Char EOF) (read-char /dev/csvin))
     (case maybe-char
-      [(#\a) (values #\u0007 (read-char /dev/csvin))]
-      [(#\b) (values #\u0008 (read-char /dev/csvin))]
-      [(#\f) (values #\u000C (read-char /dev/csvin))]
-      [(#\n) (values #\u000A (read-char /dev/csvin))]
-      [(#\r) (values #\u000D (read-char /dev/csvin))]
-      [(#\t) (values #\u0009 (read-char /dev/csvin))]
-      [(#\v) (values #\u000B (read-char /dev/csvin))]
-      [(#\e) (values #\u001B (read-char /dev/csvin))]
-      [(#\a) (values (integer->char #x07) (read-char /dev/csvin))]
-      [(#\a) (values (integer->char #x07) (read-char /dev/csvin))]
+      [(#\a) (values #\u07 (read-char /dev/csvin))]
+      [(#\b) (values #\u08 (read-char /dev/csvin))]
+      [(#\f) (values #\u0C (read-char /dev/csvin))]
+      [(#\n) (values #\u0A (read-char /dev/csvin))]
+      [(#\r) (values #\u0D (read-char /dev/csvin))]
+      [(#\t) (values #\u09 (read-char /dev/csvin))]
+      [(#\v) (values #\u0B (read-char /dev/csvin))]
+      [(#\e) (values #\u1B (read-char /dev/csvin))]
+      [(#\x) (csv-read-hexadecimal-char /dev/csvin)]
+      [(#\u) (csv-read-unicode-char /dev/csvin 4)]
+      [(#\U) (csv-read-unicode-char /dev/csvin 8)]
+      [(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7) (csv-read-octal-char /dev/csvin (assert maybe-char char?))]
       [else (let ([maybe-leader : (Option (U Char EOF)) (csv-try-newline maybe-char /dev/csvin)])
               (cond [(and maybe-leader) (values #\newline maybe-leader)]
                     [else (values maybe-char (read-char /dev/csvin))]))])))
 
-(define css-consume-hexadecimal : (->* (Input-Port Byte) (Fixnum) (Values Fixnum Byte))
-  (lambda [css --count [result 0]]
-    (define hex : (U EOF Char) (peek-char css))
-    (cond [(or (eof-object? hex) (not (char-hexdigit? hex)) (zero? --count))
-           (values result --count)]
-          [else (read-char css) (css-consume-hexadecimal css (- --count 1)
-                                                         (fx+ (fxlshift result 4)
-                                                              (char->hexadecimal hex)))])))
 
-(define css-consume-escaped-char : (-> Input-Port Char)
-  ;;; https://drafts.csswg.org/css-syntax/#consume-an-escaped-code-point
-  ;;; #\uFFFD
-  (lambda [css]
-    (define esc : (U EOF Char) (read-char css))
-    (cond [(eof-object? esc) #\uFFFD]
-          [(not (char-hexdigit? esc)) esc]
-          [else (let-values ([(hex _) (css-consume-hexadecimal css (sub1 6) (char->hexadecimal esc))])
-                  (cond [(or (fx<= hex 0) (fx> hex #x10FFFF)) #\uFFFD] ; #\nul and max unicode
-                        [(<= #xD800 hex #xDFFF) #\uFFFD] ; surrogate
-                        [else (integer->char hex)]))])))
+(define csv-read-octal-char : (-> Input-Port Char (Values (U Char EOF) (U Char EOF)))
+  (lambda [/dev/csvin leading-char]
+    (let read-octal ([n : Fixnum (char->decimal leading-char)]
+                     [count : Index 1])
+      (define maybe-char : (U Char EOF) (read-char /dev/csvin))
+      (cond [(>= count 3) (values (unicode->char n) maybe-char)]
+            [(char-oct-digit? maybe-char)
+             (read-octal (unsafe-fx+ (unsafe-fxlshift n 3) (char->decimal maybe-char)) (+ count 1))]
+            [else (values (unicode->char n) maybe-char)]))))
 
-(define char-hexdigit? : (-> (U EOF Char) Boolean : #:+ Char)
+(define csv-read-hexadecimal-char : (-> Input-Port (Values (U Char EOF) (U Char EOF)))
+  (lambda [/dev/csvin]
+    (define maybe-char : (U Char EOF) (read-char /dev/csvin))
+    (cond [(not (char-hex-digit? maybe-char))
+           (csv-log-escape-error /dev/csvin)
+           (values #\uFFFD maybe-char)]
+          [else (let read-hexa ([n : Fixnum (char->decimal maybe-char)])
+                  (define maybe-char : (U Char EOF) (read-char /dev/csvin))
+                  (cond [(not (char-hex-digit? maybe-char)) (values (unicode->char n) maybe-char)]
+                        [(< n #x10FFFF) (read-hexa (unsafe-fx+ (unsafe-fxlshift n 4) (char->decimal maybe-char)))]
+                        [else (read-hexa n)]))])))
+
+(define csv-read-unicode-char : (-> Input-Port Positive-Byte (Values (U Char EOF) (U Char EOF)))
+  (lambda [/dev/csvin total]
+    (let read-unicode ([n : Fixnum 0]
+                       [count : Index 0])
+      (define maybe-char : (U Char EOF) (read-char /dev/csvin))
+      (cond [(>= count total) (values (unicode->char n) maybe-char)]
+            [(not (char-hex-digit? maybe-char))
+             (csv-log-escape-error /dev/csvin)
+             (read-string (- total count 1) /dev/csvin) (values #\uFFFD (read-char /dev/csvin))]
+            [(< n #x10FFFF) (read-unicode (unsafe-fx+ (unsafe-fxlshift n 4) (char->decimal maybe-char)) (+ count 1))]
+            [else (read-unicode n (+ count 1))]))))
+
+(define unicode->char : (-> Fixnum Char)
+  (lambda [n]
+    (cond [(> n #x10FFFF) #\uFFFD] ; #\nul and max unicode
+          [(<= #xD800 n #xDFFF) #\uFFFD] ; surrogate
+          [else (integer->char n)])))
+
+(define char-oct-digit? : (-> Any Boolean : #:+ Char)
+  (lambda [ch]
+    (and (char? ch)
+         (char<=? #\0 ch #\7))))
+
+(define char-hex-digit? : (-> Any Boolean : #:+ Char)
   (lambda [ch]
     (and (char? ch)
          (or (char-numeric? ch)
              (char-ci<=? #\a ch #\f)))))
 
-(define char->hexadecimal : (-> Char Fixnum)
+(define char->decimal : (-> Char Fixnum)
   (lambda [hexch]
-    (cond [(char<=? #\a hexch) (fx- (char->integer hexch) #x57)]
-          [(char<=? #\A hexch) (fx- (char->integer hexch) #x37)]
-          [else (fx- (char->integer hexch) #x30)])))
+    (cond [(char<=? #\a hexch) (- (char->integer hexch) #x57)]
+          [(char<=? #\A hexch) (- (char->integer hexch) #x37)]
+          [else (- (char->integer hexch) #x30)])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define srahc->field : (-> (Listof Char) CSV-Field)
@@ -280,6 +307,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-topic : Symbol 'exn:csv:syntax)
+
+(define csv-log-escape-error : (-> Input-Port Void)
+  (lambda [/dev/csvin]
+    (csv-log-syntax-error /dev/csvin 'warning #false "invalid escape sequence")))
 
 (define csv-log-length-error : (-> Input-Port Integer Integer (U (Vectorof CSV-Field) (Listof CSV-Field)) Boolean Void)
   (lambda [/dev/csvin expected given in strict?]
