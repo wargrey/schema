@@ -1,7 +1,6 @@
 #lang typed/racket/base
 
 ;;; https://tools.ietf.org/html/rfc4180
-;;; https://frictionlessdata.io/specs/csv-dialect
 
 (provide (all-defined-out))
 
@@ -95,7 +94,9 @@
                         [sdleif : (Listof CSV-Field) null])
       (define-values (field more?) (csv-read-field/trim-left /dev/csvin maybe-char <#> <:> </> <\> strict? trim-left? trim-right?))
       (cond [(eq? more? #true) (read-this-row (read-char /dev/csvin) (cons field sdleif))]
-            [else (values (sdleif->row field sdleif) more?)]))))
+            [(pair? sdleif) (values (reverse (cons field sdleif)) more?)]
+            [(eq? field empty-field) (values null more?)]
+            [else (values (list field) more?)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-read-field/trim-left : (-> Input-Port (U Char EOF) (Option Char) Char (Option Char) (Option Char) Boolean Boolean Boolean
@@ -258,7 +259,7 @@
       (cond [(>= count total) (values (unicode->char n) maybe-char)]
             [(not (char-hex-digit? maybe-char))
              (csv-log-escape-error /dev/csvin)
-             (read-string (- total count 1) /dev/csvin) (values #\uFFFD (read-char /dev/csvin))]
+             (read-string (- (- total 1) count) /dev/csvin) (values #\uFFFD (read-char /dev/csvin))]
             [(< n #x10FFFF) (read-unicode (unsafe-fx+ (unsafe-fxlshift n 4) (char->decimal maybe-char)) (+ count 1))]
             [else (read-unicode n (+ count 1))]))))
 
@@ -295,15 +296,9 @@
   (lambda [srahc trim?]
     (cond [(not trim?) (srahc->field srahc)]
           [else (let trim ([rest : (Listof Char) srahc])
-                  (cond [(null? rest) empty-field] ; there should be at least one non-whitespaces regardless whether trimming the leading ones 
+                  (cond [(null? rest) empty-field] 
                         [(char-blank? (car rest)) (trim (cdr rest))]
                         [else (srahc->field rest)]))])))
-
-(define sdleif->row : (->  CSV-Field (Listof CSV-Field) (Listof CSV-Field))
-  (lambda [field sdleif]
-    (cond [(pair? sdleif) (reverse (cons field sdleif))]
-          [(eq? field empty-field) null]
-          [else (list field)])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-topic : Symbol 'exn:csv:syntax)

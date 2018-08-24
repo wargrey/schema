@@ -11,7 +11,7 @@
         "1996,Jeep,Grand Cherokee,'MUST SELL!\r\nair, moon roof, loaded',4799.00\n\n"
         "\nwhatever"))
 
-((inst with-logging-to-port Void)
+#;((inst with-logging-to-port Void)
  (current-error-port)
  (λ [] (for ([row (in-list examples)])
          (define /dev/csvin : Input-Port (open-input-string row))

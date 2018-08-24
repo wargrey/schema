@@ -6,6 +6,8 @@
 
 (require syntax/location)
 
+(port-count-lines-enabled #true)
+
 (define passwd.csv : Path-String (#%csv))
 
 ((inst with-logging-to-port (U (Listof (Listof CSV-Field)) (Listof (Vectorof CSV-Field))))
