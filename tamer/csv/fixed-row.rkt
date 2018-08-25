@@ -8,7 +8,6 @@
 
 ((inst with-logging-to-port (Listof (Vectorof CSV-Field)))
  (current-error-port)
- (λ [] (call-with-input-file* fixed-row.csv
-         (λ [[/dev/csvin : Input-Port]]
-           (read-csv /dev/csvin 5 #true))))
+ (λ [] (for/list : (Listof (Vectorof CSV-Field)) ([row (in-csv fixed-row.csv 5 #true)])
+         row))
  'debug)

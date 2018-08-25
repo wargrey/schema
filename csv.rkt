@@ -1,27 +1,41 @@
 #lang typed/racket/base
 
 (provide (all-defined-out))
-(provide CSV-Field CSV-Dialect)
+(provide CSV-Field CSV-Dialect CSV-Row*)
 
-(require "digitama/exchange/csv.rkt")
+(require "digitama/exchange/csv/reader.rkt")
 
 ;;; Note
 ; 1. `file->bytes` does not improve the performance significantly
 ; 2. `reverse` is not harm for performance 
 
-(define read-csv : (-> (U Input-Port Bytes Path-String) Positive-Integer Boolean [#:dialect (Option CSV-Dialect)] [#:strict? Boolean]
-                       (Listof (Vectorof CSV-Field)))
-  (lambda [/dev/csvin n skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
-    (cond [(input-port? /dev/csvin) (reverse (csv-read/reversed /dev/csvin (assert n index?) skip-header? (or dialect csv::wargrey) strict?))]
-          [(bytes? /dev/csvin) (read-csv (open-input-bytes /dev/csvin) n skip-header? #:dialect dialect #:strict? strict?)]
-          [else (with-input-from-file /dev/csvin (λ [] (read-csv (current-input-port) n skip-header? #:dialect dialect #:strict? strict?)))])))
+(define read-csv : (-> CSV-StdIn Positive-Integer Boolean [#:dialect (Option CSV-Dialect)] [#:strict? Boolean] (Listof (Vectorof CSV-Field)))
+  (lambda [/dev/stdin n skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
+    (if (input-port? /dev/stdin)
+        (reverse (csv-read/reversed /dev/stdin (assert n index?) skip-header? (or dialect csv::rfc) strict?))
+        (let ([/dev/csvin (csv-input-port /dev/stdin)])
+          (dynamic-wind
+           (λ [] (void))
+           (λ [] (read-csv /dev/csvin n skip-header? #:dialect dialect #:strict? strict?))
+           (λ [] (close-input-port /dev/csvin)))))))
 
-(define read-csv* : (-> (U Input-Port Bytes Path-String) Boolean [#:dialect (Option CSV-Dialect)] [#:strict? Boolean]
-                        (Listof (Listof CSV-Field)))
-  (lambda [/dev/csvin skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
-    (cond [(input-port? /dev/csvin) (reverse (csv-read*/reversed /dev/csvin skip-header? (or dialect csv::wargrey) strict?))]
-          [(bytes? /dev/csvin) (read-csv* (open-input-bytes /dev/csvin) skip-header? #:dialect dialect #:strict? strict?)]
-          [else (with-input-from-file /dev/csvin (λ [] (read-csv* (current-input-port) skip-header? #:dialect dialect #:strict? strict?)))])))
+(define read-csv* : (-> CSV-StdIn Boolean [#:dialect (Option CSV-Dialect)] [#:strict? Boolean] (Listof (Pairof CSV-Field (Listof CSV-Field))))
+  (lambda [/dev/stdin skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
+    (if (input-port? /dev/stdin)
+        (reverse (csv-read*/reversed /dev/stdin skip-header? (or dialect csv::rfc) strict?))
+        (let ([/dev/csvin (csv-input-port /dev/stdin)])
+          (dynamic-wind
+           (λ [] (void))
+           (λ [] (read-csv* /dev/csvin skip-header? #:dialect dialect #:strict? strict?))
+           (λ [] (close-input-port /dev/csvin)))))))
+
+(define in-csv : (-> CSV-StdIn Positive-Integer Boolean [#:dialect (Option CSV-Dialect)] [#:strict? Boolean] (Sequenceof (Vectorof CSV-Field)))
+  (lambda [/dev/stdin n skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
+    (in-csv-port /dev/stdin (assert n index?) skip-header? (or dialect csv::rfc) strict?)))
+
+(define in-csv* : (-> CSV-StdIn Boolean [#:dialect (Option CSV-Dialect)] [#:strict? Boolean] (Sequenceof (Pairof CSV-Field (Listof CSV-Field))))
+  (lambda [/dev/stdin skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
+    (in-csv-port* /dev/stdin skip-header? (or dialect csv::rfc) strict?)))
 
 (define csv-empty-line? : (-> (Listof CSV-Field) Boolean)
   (lambda [row]
@@ -42,5 +56,5 @@
       (CSV-Dialect <:> </> (if (eq? </> <\>) #false <\>) <#>
                    skip-empty-line? trim-left? trim-right?))))
 
-(define csv::wargrey : CSV-Dialect (make-csv-dialect))
+(define csv::rfc : CSV-Dialect (make-csv-dialect))
 (define csv::unix : CSV-Dialect (make-csv-dialect #:delimiter #\: #:quote-char #false #:comment-char #\# #:escape-char #\\))

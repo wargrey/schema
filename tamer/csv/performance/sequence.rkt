@@ -1,4 +1,4 @@
-#lang typed/racket/base
+#lang typed/racket
 
 (require "../csv.rkt")
 
@@ -12,8 +12,8 @@
     (λ [] (time (read-csv StateDepartment.csv 28 #true)))
     'debug))
 
-(printf "l: ")
-(define lists : (Listof (Listof CSV-Field))
-  (with-logging-to-port (current-error-port)
-    (λ [] (time (read-csv* StateDepartment.csv #true)))
-    'debug))
+(printf "s: ")
+((inst with-logging-to-port Void)
+ (current-error-port)
+ (λ [] (void (time (sequence->list (in-csv StateDepartment.csv 28 #true)))))
+ 'debug)
