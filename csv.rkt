@@ -7,27 +7,25 @@
 
 ;;; Note
 ; 1. `file->bytes` does not improve the performance significantly
-; 2. `reverse` is not harm for performance 
+; 2. `reverse` is not harmful for performance
+; 3. the performance of `read-csv` and `sequence->list . in-csv` can be considered identity
+;     (e.g. for a 60MB CSV, the difference is within [-200ms, +200ms]).
 
 (define read-csv : (-> CSV-StdIn Positive-Integer Boolean [#:dialect (Option CSV-Dialect)] [#:strict? Boolean] (Listof (Vectorof CSV-Field)))
   (lambda [/dev/stdin n skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
-    (if (input-port? /dev/stdin)
-        (reverse (csv-read/reversed /dev/stdin (assert n index?) skip-header? (or dialect csv::rfc) strict?))
-        (let ([/dev/csvin (csv-input-port /dev/stdin)])
-          (dynamic-wind
-           (λ [] (void))
-           (λ [] (read-csv /dev/csvin n skip-header? #:dialect dialect #:strict? strict?))
-           (λ [] (close-input-port /dev/csvin)))))))
+    (parameterize ([current-custodian (make-custodian)])
+      (dynamic-wind
+       (λ [] (void))
+       (λ [] (reverse (csv-read/reversed /dev/stdin (assert n index?) skip-header? (or dialect csv::rfc) strict?)))
+       (λ [] (custodian-shutdown-all (current-custodian)))))))
 
 (define read-csv* : (-> CSV-StdIn Boolean [#:dialect (Option CSV-Dialect)] [#:strict? Boolean] (Listof (Pairof CSV-Field (Listof CSV-Field))))
   (lambda [/dev/stdin skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]
-    (if (input-port? /dev/stdin)
-        (reverse (csv-read*/reversed /dev/stdin skip-header? (or dialect csv::rfc) strict?))
-        (let ([/dev/csvin (csv-input-port /dev/stdin)])
-          (dynamic-wind
-           (λ [] (void))
-           (λ [] (read-csv* /dev/csvin skip-header? #:dialect dialect #:strict? strict?))
-           (λ [] (close-input-port /dev/csvin)))))))
+    (parameterize ([current-custodian (make-custodian)])
+      (dynamic-wind
+       (λ [] (void))
+       (λ [] (reverse (csv-read*/reversed /dev/stdin skip-header? (or dialect csv::rfc) strict?)))
+       (λ [] (custodian-shutdown-all (current-custodian)))))))
 
 (define in-csv : (-> CSV-StdIn Positive-Integer Boolean [#:dialect (Option CSV-Dialect)] [#:strict? Boolean] (Sequenceof (Vectorof CSV-Field)))
   (lambda [/dev/stdin n skip-header? #:dialect [dialect #false] #:strict? [strict? #false]]

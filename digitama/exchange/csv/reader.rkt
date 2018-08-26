@@ -17,6 +17,7 @@
 
 (define-type CSV-Field String)
 (define-type CSV-Row* (Pairof CSV-Field (Listof CSV-Field)))
+(define-type CSV-StdIn (U Input-Port Bytes Path-String))
 
 (define empty-field : CSV-Field "")
 (define empty-row : (Vectorof CSV-Field) (vector))
@@ -33,16 +34,6 @@
   #:transparent)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define-type CSV-StdIn (U Input-Port Bytes Path-String))
-
-(define csv-input-port : (-> CSV-StdIn Input-Port)
-  (lambda [/dev/stdin]
-    (cond [(path? /dev/stdin) (open-input-file /dev/stdin)]
-          [(regexp-match? #px"\\.csv$" /dev/stdin) (open-input-file (format "~a" /dev/stdin))]
-          [(string? /dev/stdin) (open-input-string /dev/stdin '/dev/csvin/string)]
-          [(bytes? /dev/stdin) (open-input-bytes /dev/stdin '/dev/csvin/bytes)]
-          [else /dev/stdin])))
-
 (define in-csv-port : (-> CSV-StdIn Positive-Index Boolean CSV-Dialect Boolean (Sequenceof (Vectorof CSV-Field)))
   (lambda [/dev/stdin n skipheader? dialect strict?]
     (define <:> : Char (CSV-Dialect-delimiter dialect))
@@ -53,16 +44,12 @@
     (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
     (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
 
-    (define /dev/csvin : Input-Port (csv-input-port /dev/stdin))
-    
-    (unless (not skipheader?)
-      (read-line /dev/csvin))
-
+    (define /dev/csvin : Input-Port (csv-input-port /dev/stdin skipheader? #true))
     (define sentinel : (Pairof (U Char EOF) (Vectorof CSV-Field)) (cons eof empty-row))
     (define (read-this-csv [hint : (Pairof (U Char EOF) (Vectorof CSV-Field))]) : (Pairof (U Char EOF) (Vectorof CSV-Field))
       (define-values (maybe-row maybe-leader) (read-csv-row /dev/csvin n (car hint) <#> <:> </> <\> strict? trim-line? trim-left? trim-right?))
       (cond [(and maybe-row) (cons (if (char? maybe-leader) maybe-leader eof) maybe-row)]
-            [(not maybe-leader) (unless (eq? /dev/stdin /dev/csvin) (close-input-port /dev/csvin)) sentinel]
+            [(not maybe-leader) (csv-close-input-port /dev/csvin) sentinel]
             [else (read-this-csv (cons maybe-leader empty-row))]))
 
     ((inst make-do-sequence (Pairof (U Char EOF) (Vectorof CSV-Field)) (Vectorof CSV-Field))
@@ -83,17 +70,12 @@
     (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
     (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
 
-    (define /dev/csvin : Input-Port (csv-input-port /dev/stdin))
-    
-    (unless (not skipheader?)
-      (read-line /dev/csvin))
-
+    (define /dev/csvin : Input-Port (csv-input-port /dev/stdin skipheader? #true))
     (define sentinel : (Pairof (U Char EOF) CSV-Row*) (cons eof empty-row*))
     (define (read-this-csv [hint : (Pairof (U Char EOF) CSV-Row*)]) : (Pairof (U Char EOF) CSV-Row*)
-      (displayln hint)
       (define-values (maybe-row maybe-leader) (read-csv-row* /dev/csvin (car hint) <#> <:> </> <\> strict? trim-line? trim-left? trim-right?))
       (cond [(pair? maybe-row) (cons (if (char? maybe-leader) maybe-leader eof) maybe-row)]
-            [(not maybe-leader) (unless (eq? /dev/stdin /dev/csvin) (close-input-port /dev/csvin)) sentinel]
+            [(not maybe-leader) (csv-close-input-port /dev/csvin) sentinel]
             [else (read-this-csv (cons maybe-leader empty-row*))]))
 
     ((inst make-do-sequence (Pairof (U Char EOF) CSV-Row*) CSV-Row*)
@@ -105,8 +87,8 @@
                    #false)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define csv-read/reversed : (-> Input-Port Positive-Index Boolean CSV-Dialect Boolean (Listof (Vectorof CSV-Field)))
-  (lambda [/dev/csvin n skipheader? dialect strict?]
+(define csv-read/reversed : (-> CSV-StdIn Positive-Index Boolean CSV-Dialect Boolean (Listof (Vectorof CSV-Field)))
+  (lambda [/dev/stdin n skipheader? dialect strict?]
     (define <:> : Char (CSV-Dialect-delimiter dialect))
     (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
     (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
@@ -114,10 +96,8 @@
     (define trim-line? : Boolean (CSV-Dialect-skip-empty-line? dialect))
     (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
     (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
-
-    (unless (not skipheader?)
-      (read-line /dev/csvin))
-
+    
+    (define /dev/csvin : Input-Port (csv-input-port /dev/stdin skipheader? #false))
     (let read-this-csv ([swor : (Listof (Vectorof CSV-Field)) null]
                         [maybe-char : (U Char EOF) (read-char /dev/csvin)])
       (define-values (maybe-row maybe-leader) (read-csv-row /dev/csvin n maybe-char <#> <:> </> <\> strict? trim-line? trim-left? trim-right?))
@@ -125,8 +105,8 @@
             [(char? maybe-leader) (read-this-csv (cons maybe-row swor) maybe-leader)]
             [else (cons maybe-row swor)]))))
 
-(define csv-read*/reversed : (-> Input-Port Boolean CSV-Dialect Boolean (Listof CSV-Row*))
-  (lambda [/dev/csvin skipheader? dialect strict?]
+(define csv-read*/reversed : (-> CSV-StdIn Boolean CSV-Dialect Boolean (Listof CSV-Row*))
+  (lambda [/dev/stdin skipheader? dialect strict?]
     (define <:> : Char (CSV-Dialect-delimiter dialect))
     (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
     (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
@@ -135,9 +115,7 @@
     (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
     (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
 
-    (unless (not skipheader?)
-      (read-line /dev/csvin))
-
+    (define /dev/csvin : Input-Port (csv-input-port /dev/stdin skipheader? #false))
     (let read-this-csv ([swor : (Listof CSV-Row*) null]
                         [maybe-char : (U Char EOF) (read-char /dev/csvin)])
       (define-values (maybe-row maybe-leader) (read-csv-row* /dev/csvin maybe-char <#> <:> </> <\> strict? trim-line? trim-left? trim-right?))
@@ -145,7 +123,7 @@
             [(char? maybe-leader) (read-this-csv (cons maybe-row swor) maybe-leader)]
             [else (cons maybe-row swor)]))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define read-csv-row : (-> Input-Port Positive-Index (U Char EOF) (Option Char) Char (Option Char) (Option Char) Boolean Boolean Boolean Boolean
                            (Values (Option (Vectorof CSV-Field)) (Option Char)))
   (lambda [/dev/csvin n leading-char <#> <:> </> <\> strict? trim-line? trim-left? trim-right?]
@@ -380,6 +358,31 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-topic : Symbol 'exn:csv:syntax)
+(define csv-ports : (HashTable Input-Port Boolean) (make-hasheq))
+
+(define csv-input-port : (-> CSV-StdIn Boolean Boolean Input-Port)
+  (lambda [/dev/stdin skipheader? trace?]
+    (define /dev/csvin : Input-Port
+      (cond [(input-port? /dev/stdin) /dev/stdin]
+            [(path? /dev/stdin) (open-input-file /dev/stdin)]
+            [(regexp-match? #px"\\.csv$" /dev/stdin) (open-input-file (format "~a" /dev/stdin))]
+            [(bytes? /dev/stdin) (open-input-bytes /dev/stdin '/dev/csvin/bytes)]
+            [else (open-input-string /dev/stdin '/dev/csvin/string)]))
+
+    (unless (not skipheader?)
+      (read-line /dev/csvin))
+    
+    (when (and trace?)
+      (unless (eq? /dev/csvin /dev/stdin)
+        (hash-set! csv-ports /dev/csvin #true)))
+    
+    /dev/csvin))
+
+(define csv-close-input-port : (-> Input-Port Void)
+  (lambda [/dev/csvin]
+    (when (hash-has-key? csv-ports /dev/csvin)
+      (hash-remove! csv-ports /dev/csvin)
+      (close-input-port /dev/csvin))))
 
 (define csv-log-escape-error : (-> Input-Port Void)
   (lambda [/dev/csvin]
@@ -413,4 +416,5 @@
             [else (format "~a: ~a" (object-name /dev/csvin) brief)]))
     (log-message (current-logger) level csv-topic message #false)
     (unless (not strict?)
+      (csv-close-input-port /dev/csvin)
       (raise-user-error 'csv "~a" message))))
