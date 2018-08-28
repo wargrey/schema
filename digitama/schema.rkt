@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang typed/racket/base
 
 (provide (all-defined-out))
 (provide Schema-Serialize Schema-Deserialize)
@@ -12,6 +12,9 @@
 (require "exchange/base.rkt")
 (require "exchange/racket.rkt")
 (require "exchange/sql.rkt")
+
+(require racket/match)
+(require racket/format)
 
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))
@@ -94,7 +97,7 @@
                 
                 (define (remake-table [self : (Option Table)] #:unsafe? [unsafe? : Boolean #false] reargs ...) : Table
                   (let ([field ((inst field-value Table FieldType FieldType)
-                                'remake-table 'field self table-field field (thunk (void) defval ...))]
+                                'remake-table 'field self table-field field (λ [] (void) defval ...))]
                         ...)
                     (when (not unsafe?)
                       (check-constraint 'remake-table 'table '(field ...) contract-literals
@@ -142,7 +145,7 @@
                     (list->table #:unsafe? unsafe? #:alt-fname 'hash->table
                                  (dict->record 'hash->table src
                                                '(field ...)
-                                               (list (thunk (void) defval ...) ...)))))
+                                               (list (λ [] (void) defval ...) ...)))))
                   
                 (define table-serialize : (->* (Table) (Schema-Serialize) Bytes)
                   (lambda [self [serialize table->racket]]
@@ -154,7 +157,7 @@
                 (define table-deserialize : (->* (Bytes) (Schema-Deserialize #:unsafe? Boolean) Table)
                   (lambda [src [deserialize racket->table] #:unsafe? [unsafe? #false]]
                     (list->table #:unsafe? unsafe? #:alt-fname 'table-deserialize
-                                 (deserialize 'table src '(field ...) (list (thunk (void) defval ...) ...)))))
+                                 (deserialize 'table src '(field ...) (list (λ [] (void) defval ...) ...)))))
                   
                 (define make-table-message : (-> Symbol (U Table exn) Schema-Serialize [#:urgent Any] Schema-Message)
                   (lambda [manipulation occurrence [serialize table->racket] #:urgent [urgent #false]]
@@ -195,8 +198,8 @@
                     (lambda [dbc #:where [where #false] #:fetch [size +inf.0]
                                  #:order-by [order-field 'default-order-by] #:asc? [asc? #true]
                                  #:limit [limit 0] #:offset [offset 0]]
-                      (sequence->list (do-select-table dbtable where '(dbrowid ...) '(dbfield ...) mkrow
-                                                       dbc size order-field asc? limit offset)))))
+                      (for/list ([row (do-select-table dbtable where '(dbrowid ...) '(dbfield ...) mkrow dbc size order-field asc? limit offset)])
+                        row))))
                   
                 (define in-table : (-> Connection
                                        [#:where (U RowidType (Pairof String (Listof Any)) False)]
@@ -261,7 +264,7 @@
                 (define table-examples : (->* () ((Option Symbol)) (Listof Any))
                   (lambda [[fname #false]]
                     (case fname
-                      [(field) (check-example field-examples (thunk (list defval ...)))] ...
+                      [(field) (check-example field-examples (λ [] (list defval ...)))] ...
                       [else (map table-examples '(field ...))])))))]))
 
 (define-syntax (define-schema stx)

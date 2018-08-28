@@ -4,6 +4,7 @@
 (provide CSV-Field CSV-Dialect CSV-Row*)
 
 (require "digitama/exchange/csv/reader.rkt")
+(require "digitama/exchange/csv/misc.rkt")
 
 ;;; Note
 ; 1. `file->bytes` does not improve the performance significantly
