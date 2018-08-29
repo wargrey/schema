@@ -2,9 +2,11 @@
 
 (provide (all-defined-out))
 (provide (all-from-out "../../csv.rkt"))
+(provide (all-from-out "../../digitama/exchange/csv/readline.rkt"))
 (provide (all-from-out racket/logging))
 
 (require "../../csv.rkt")
+(require "../../digitama/exchange/csv/readline.rkt")
 
 (require racket/path)
 (require racket/logging)

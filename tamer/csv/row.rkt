@@ -12,6 +12,7 @@
         "1996,Jeep,Grand Cherokee,'MUST SELL!\n\rair, moon roof, loaded',4799.00\n\n"
         "\nwhatever"))
 
+(displayln '===================================================================)
 (displayln (object-name read-csv-row*))
 ((inst with-logging-to-port Void)
  (current-error-port)
