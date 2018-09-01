@@ -4,6 +4,7 @@
 
 (provide (all-defined-out))
 
+(require "dialect.rkt")
 (require "misc.rkt")
 
 (require racket/unsafe/ops)
@@ -17,18 +18,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define in-csv-line-port : (-> Input-Port Positive-Index CSV-Dialect Boolean (Sequenceof CSV-Row))
   (lambda [/dev/csvin n dialect strict?]
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
-    (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
-    (define trim-line? : Boolean (CSV-Dialect-skip-empty-line? dialect))
-    (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
-    (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
-
     (define (read-csv [hint : CSV-Row]) : CSV-Row
       (define maybe-line : (U String EOF) (read-line /dev/csvin 'any))
       (cond [(eof-object? maybe-line) (csv-close-input-port /dev/csvin) empty-row]
-            [else (let ([maybe-row (csv-extract-row /dev/csvin maybe-line n <#> <:> </> <\> strict? trim-line? trim-left? trim-right?)])
+            [else (let ([maybe-row (csv-extract-row /dev/csvin maybe-line 0 (string-length maybe-line) n dialect strict?)])
                     (if (not maybe-row) (read-csv empty-row) maybe-row))]))
 
     ((inst make-do-sequence CSV-Row CSV-Row)
@@ -41,18 +34,10 @@
 
 (define in-csv-line-port* : (-> Input-Port CSV-Dialect Boolean (Sequenceof CSV-Row*))
   (lambda [/dev/csvin dialect strict?]
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
-    (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
-    (define trim-line? : Boolean (CSV-Dialect-skip-empty-line? dialect))
-    (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
-    (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
-
     (define (read-csv [hint : CSV-Row*]) : CSV-Row*
       (define maybe-line : (U String EOF) (read-line /dev/csvin 'any))
       (cond [(eof-object? maybe-line) (csv-close-input-port /dev/csvin) empty-row*]
-            [else (let ([maybe-row (csv-extract-row* /dev/csvin maybe-line <#> <:> </> <\> strict? trim-line? trim-left? trim-right?)])
+            [else (let ([maybe-row (csv-extract-row* /dev/csvin maybe-line 0 (string-length maybe-line) dialect strict?)])
                     (if (pair? maybe-row) maybe-row (read-csv empty-row*)))]))
 
     ((inst make-do-sequence CSV-Row* CSV-Row*)
@@ -66,106 +51,93 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-readline/reverse : (-> Input-Port Positive-Index CSV-Dialect Boolean (Listof CSV-Row))
   (lambda [/dev/csvin n dialect strict?]
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
-    (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
-    (define trim-line? : Boolean (CSV-Dialect-skip-empty-line? dialect))
-    (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
-    (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
-    
     (let read-csv ([swor : (Listof CSV-Row) null])
       (define maybe-line : (U String EOF) (read-line /dev/csvin 'any))
       (cond [(eof-object? maybe-line) swor]
-            [else (let ([maybe-row (csv-extract-row /dev/csvin maybe-line n <#> <:> </> <\> strict? trim-line? trim-left? trim-right?)])
+            [else (let ([maybe-row (csv-extract-row /dev/csvin maybe-line 0 (string-length maybe-line) n dialect strict?)])
                     (read-csv (if (not maybe-row) swor (cons maybe-row swor))))]))))
 
 (define csv-readline*/reverse : (-> Input-Port CSV-Dialect Boolean (Listof CSV-Row*))
   (lambda [/dev/csvin dialect strict?]
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
-    (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
-    (define trim-line? : Boolean (CSV-Dialect-skip-empty-line? dialect))
-    (define trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect))
-    (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
-
     (let read-csv ([swor : (Listof CSV-Row*) null])
       (define maybe-line : (U String EOF) (read-line /dev/csvin 'any))
       (cond [(eof-object? maybe-line) swor]
-            [else (let ([maybe-row (csv-extract-row* /dev/csvin maybe-line <#> <:> </> <\> strict? trim-line? trim-left? trim-right?)])
+            [else (let ([maybe-row (csv-extract-row* /dev/csvin maybe-line 0 (string-length maybe-line) dialect strict?)])
                     (read-csv (if (pair? maybe-row) (cons maybe-row swor) swor)))]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define csv-extract-row : (-> Input-Port String Positive-Index (Option Char) Char (Option Char) (Option Char) Boolean Boolean Boolean Boolean
-                              (Option CSV-Row))
-  (lambda [/dev/csvin src n <#> <:> </> <\> strict? trim-line? trim-left? trim-right?]
+(define csv-extract-row : (-> CSV-StdIn String Index Index Positive-Index CSV-Dialect Boolean (Option CSV-Row))
+  (lambda [/dev/stdin src start end n dialect strict?]
     (define row : CSV-Row (make-vector n empty-field))
     (let extract-row ([src : String src]
-                      [total : Index (string-length src)]
-                      [pos : Index 0]
+                      [total : Index end]
+                      [pos : Index start]
                       [idx : Index 0])
-      (define-values (self this-total field npos) (csv-extract-field /dev/csvin src total pos <#> <:> </> <\> strict? trim-left? trim-right?))
+      (define-values (self this-total field npos) (csv-extract-field /dev/stdin src total pos dialect strict?))
       (define nidx : Positive-Fixnum (+ idx 1))
       (if (<= npos this-total) ; has more
-          (cond [(>= nidx n) (csv-skip-exceeded-fields /dev/csvin src total npos n nidx <#> <:> </> <\> strict?)]
+          (cond [(>= nidx n) (csv-skip-exceeded-fields /dev/stdin src total npos n nidx dialect strict?)]
                 [else (vector-set! row idx field) (extract-row self this-total npos nidx)])
           (cond [(= nidx n) (vector-set! row idx field) row]
-                [(> nidx 1) (vector-set! row idx field) (csv-log-length-error /dev/csvin src pos n nidx row strict?) #false]
-                [(not (eq? (vector-ref row 0) empty-field)) (csv-log-length-error /dev/csvin src pos n nidx row strict?) #false]
-                [(not trim-line?) (csv-log-length-error /dev/csvin src pos n nidx (vector empty-field) strict?) #false]
-                [else #false])))))
+                [(> nidx 1) (vector-set! row idx field) (csv-log-length-error /dev/stdin src pos n nidx row strict?) #false]
+                [(not (eq? (vector-ref row 0) empty-field)) (csv-log-length-error /dev/stdin src pos n nidx row strict?) #false]
+                [(CSV-Dialect-skip-empty-line? dialect) #false]
+                [else (csv-log-length-error /dev/stdin src pos n nidx (vector empty-field) strict?) #false])))))
   
-(define csv-extract-row* : (-> Input-Port String (Option Char) Char (Option Char) (Option Char) Boolean Boolean Boolean Boolean
-                               (Listof CSV-Field))
-  (lambda [/dev/csvin src <#> <:> </> <\> strict? trim-line? trim-left? trim-right?]
+(define csv-extract-row* : (-> CSV-StdIn String Index Index CSV-Dialect Boolean (Listof CSV-Field))
+  (lambda [/dev/stdin src start end dialect strict?]
     (let extract-row ([src : String src]
-                      [total : Index (string-length src)]
-                      [pos : Index 0]
+                      [total : Index end]
+                      [pos : Index start]
                       [sdleif : (Listof CSV-Field) null])
-      (define-values (self this-total field npos) (csv-extract-field /dev/csvin src total pos <#> <:> </> <\> strict? trim-left? trim-right?))
+      (define-values (self this-total field npos) (csv-extract-field /dev/stdin src total pos dialect strict?))
       (cond [(<= npos this-total) (extract-row self this-total npos (cons field sdleif))]
             [(pair? sdleif) (reverse (cons field sdleif))]
             [(not (eq? field empty-field)) (list field)]
-            [(not trim-line?) empty-row*]
-            [else null]))))
+            [(CSV-Dialect-skip-empty-line? dialect) null]
+            [else empty-row*]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define csv-extract-field : (-> Input-Port String Index Index (Option Char) Char (Option Char) (Option Char) Boolean Boolean Boolean
-                                (Values String Index String Nonnegative-Fixnum))
-  (lambda [/dev/csvin src total idx <#> <:> </> <\> strict? trim-left? trim-right?]
+(define csv-extract-field : (-> CSV-StdIn String Index Index CSV-Dialect Boolean (Values String Index String Nonnegative-Fixnum))
+  (lambda [/dev/stdin src total idx dialect strict?]
+    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
+    (define <:> : Char (CSV-Dialect-delimiter dialect))
+    (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
+    (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
+    
     (let extract-field ([src : String src]
                         [total : Index total]
                         [start : Nonnegative-Fixnum idx]
-                        [trim-left? : Boolean trim-left?]
+                        [trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect)]
                         [end : Nonnegative-Fixnum idx]
                         [pos : Nonnegative-Fixnum idx]
                         [escaping? : Boolean #false]
                         [previous : (Option String) #false])
-      (cond [(>= pos total) (values src total (csv-subfield /dev/csvin previous src start end escaping? </> <\>) (+ total 1))]
+      (cond [(>= pos total) (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>) (+ total 1))]
             [else (let ([ch : Char (string-ref src pos)]
                         [next : Nonnegative-Fixnum (+ pos 1)])
-                    (cond [(eq? ch <:>) (values src total (csv-subfield /dev/csvin previous src start end escaping? </> <\>) next)]
-                          [(eq? ch </>) (csv-extract-quoted-field /dev/csvin src total idx start next <#> <:> </> <\> strict?)]
-                          [(eq? ch <#>) (values src total (csv-subfield /dev/csvin previous src start end escaping? </> <\>) (+ total 1))]
-                          [(char-blank? ch) (extract-field src total (if trim-left? next start) trim-left?
-                                                           (if trim-right? end next) next escaping? previous)]
+                    (cond [(eq? ch <:>) (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>) next)]
+                          [(eq? ch </>) (csv-extract-quoted-field /dev/stdin src total idx start next </> <\> dialect strict?)]
+                          [(eq? ch <#>) (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>) (+ total 1))]
+                          [(char-blank? ch) (extract-field src total (if trim-left? next start)
+                                                           trim-left? (if (CSV-Dialect-skip-trailing-space? dialect) end next)
+                                                           next escaping? previous)]
                           [(eq? ch <\>) ; `#true` -> c style escape char has been set'
                            (if (< next total) ; `newline` is not following the escape char
                                (let ([escaped-next (+ pos 2)])
                                  (extract-field src total start #false escaped-next escaped-next #true previous))
-                               (let ([half-field : String (csv-subfield /dev/csvin previous src start end escaping? </> <\>)]
-                                     [maybe-src : (U String EOF) (read-line /dev/csvin 'any)])
+                               (let ([half-field : String (csv-subfield /dev/stdin previous src start end escaping? </> <\>)]
+                                     [maybe-src : (U String EOF) (csv-read-line /dev/stdin)])
                                  (cond [(string? maybe-src) (extract-field maybe-src (string-length maybe-src) 0 #false 0 0 #false half-field)]
-                                       [else (csv-log-eof-error /dev/csvin src pos strict?) (values src total half-field (+ total 1))])))]
+                                       [else (csv-log-eof-error /dev/stdin src pos strict?) (values src total half-field (+ total 1))])))]
                           [else (extract-field src total start #false next next escaping? previous)]))]))))
 
-(define csv-extract-quoted-field : (-> Input-Port String Index Index Nonnegative-Fixnum Nonnegative-Fixnum
-                                       (Option Char) Char (Option Char) (Option Char) Boolean
-                                       (Values String Index String Nonnegative-Fixnum))
-  (lambda [/dev/csvin src total idx0 start idx <#> <:> </> <\> strict?]
+(define csv-extract-quoted-field : (-> CSV-StdIn String Index Index Nonnegative-Fixnum Nonnegative-Fixnum
+                                       (Option Char) (Option Char) CSV-Dialect Boolean (Values String Index String Nonnegative-Fixnum))
+  (lambda [/dev/stdin src total idx0 start idx </> <\> dialect strict?]
     (unless (or (= start idx0) (= start (sub1 idx)))
-      (csv-log-out-quotes-error /dev/csvin src idx strict? 'before))
+      (csv-log-out-quotes-error /dev/stdin src idx strict? 'before))
+
     (let extract-field ([src : String src]
                         [total : Index total]
                         [start : Nonnegative-Fixnum idx]
@@ -173,45 +145,53 @@
                         [escaping? : Boolean #false]
                         [previous : (Option String) #false])
       (if (>= end total)
-          (let ([half-field : String (csv-subfield /dev/csvin previous src start end escaping? </> <\>)]
-                [maybe-src : (U String EOF) (read-line /dev/csvin 'any)])
-            (cond [(eof-object? maybe-src) (csv-log-eof-error /dev/csvin src end strict?) (values src total half-field (+ total 1))]
+          (let ([half-field : String (csv-subfield /dev/stdin previous src start end escaping? </> <\>)]
+                [maybe-src : (U String EOF) (csv-read-line /dev/stdin)])
+            (cond [(eof-object? maybe-src) (csv-log-eof-error /dev/stdin src end strict?) (values src total half-field (+ total 1))]
                   [else (extract-field maybe-src (string-length maybe-src) 0 0 #false half-field)]))
           (let ([ch : Char (string-ref src end)]
                 [next : Nonnegative-Fixnum (+ end 1)])
             (cond [(eq? ch <\>) ; `#true` -> c style escape char has been set'
                    (cond [(< next total) (extract-field src total start (+ end 2) #true previous)] ; `newline` is not following the escape char
-                         [else (let ([half-field : String (csv-subfield /dev/csvin previous src start end escaping? </> <\>)]
-                                     [maybe-src : (U String EOF) (read-line /dev/csvin 'any)])
+                         [else (let ([half-field : String (csv-subfield /dev/stdin previous src start end escaping? </> <\>)]
+                                     [maybe-src : (U String EOF) (csv-read-line /dev/stdin)])
                                  (cond [(string? maybe-src) (extract-field maybe-src (string-length maybe-src) 0 0 #false half-field)]
-                                       [else (csv-log-eof-error /dev/csvin src end strict?) (values src total half-field (+ total 1))]))])]
+                                       [else (csv-log-eof-error /dev/stdin src end strict?) (values src total half-field (+ total 1))]))])]
                   [(eq? ch </>)
-                   (cond [(>= next total) (values src total (csv-subfield /dev/csvin previous src start end escaping? </> <\>) (+ total 1))]
+                   (cond [(>= next total) (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>) (+ total 1))]
                          [(eq? (string-ref src next) </>) (extract-field src total start (+ end 2) #true previous)]
-                         [else (values src total (csv-subfield /dev/csvin previous src start end escaping? </> <\>)
-                                       (csv-skip-quoted-rest src total next <:>))])]
+                         [else (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>)
+                                       (csv-skip-quoted-rest src total next dialect))])]
                    [else (extract-field src total start next escaping? previous)]))))))
 
-(define csv-skip-quoted-rest : (-> String Index Nonnegative-Fixnum Char Nonnegative-Fixnum)
-  (lambda [src total idx <:>]
+(define csv-skip-quoted-rest : (-> String Index Nonnegative-Fixnum CSV-Dialect Nonnegative-Fixnum)
+  (lambda [src total idx dialect]
+    (define <:> : Char (CSV-Dialect-delimiter dialect))
+    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
+    
     (let skip ([end : Nonnegative-Fixnum idx])
       (cond [(>= end total) (+ total 1)]
             [(eq? (string-ref src end) <:>) (+ end 1)]
+            [(eq? (string-ref src end) <#>) total]
             [else (skip (+ end 1))]))))
 
-(define csv-skip-exceeded-fields : (-> Input-Port String Index Index Positive-Index Positive-Fixnum
-                                       (Option Char) Char (Option Char) (Option Char) Boolean False)
-  (lambda [/dev/csvin src total pos n count <#> <:> </> <\> strict?]
+(define csv-skip-exceeded-fields : (-> CSV-StdIn String Index Index Positive-Index Positive-Fixnum CSV-Dialect Boolean False)
+  (lambda [/dev/stdin src total pos n count dialect strict?]
     (let skip-row ([src : String src]
                    [total : Index total]
                    [pos : Index pos]
                    [extras : (Listof CSV-Field) null]
                    [count : Positive-Fixnum count])
-      (define-values (self this-total field npos) (csv-extract-field /dev/csvin src total pos <#> <:> </> <\> #false #false #false))
+      (define-values (self this-total field npos) (csv-extract-field /dev/stdin src total pos dialect #false))
       (cond [(< npos this-total) (skip-row self this-total npos (cons field extras) (unsafe-fx+ count 1))]
-            [else (csv-log-length-error /dev/csvin self this-total n (+ count 1) (reverse (cons field extras)) strict?) #false]))))
+            [else (csv-log-length-error /dev/stdin self this-total n (+ count 1) (reverse (cons field extras)) strict?) #false]))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define csv-read-line : (-> CSV-StdIn (U String EOF))
+  (lambda [/dev/stdin]
+    (cond [(input-port? /dev/stdin) (read-line /dev/stdin 'any)]
+          [else eof])))
+
 (define csv-subfield : (-> CSV-StdIn (Option String) String Nonnegative-Fixnum Nonnegative-Fixnum Boolean (Option Char) (Option Char) CSV-Field)
   (lambda [/dev/stdin previous src start end escaping? </> <\>]
     (define this-field : String

@@ -11,16 +11,6 @@
 (define empty-row : CSV-Row (vector))
 (define empty-row* : CSV-Row* (list empty-field))
 
-(struct CSV-Dialect
-  ([delimiter : Char]
-   [quote-char : (Option Char)]
-   [escape-char : (Option Char)]
-   [comment-char : (Option Char)]
-   [skip-empty-line? : Boolean]
-   [skip-leading-space? : Boolean]
-   [skip-trailing-space? : Boolean])
-  #:transparent)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define char-oct-digit? : (-> Any Boolean : #:+ Char)
   (lambda [ch]

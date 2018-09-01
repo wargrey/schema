@@ -2,6 +2,7 @@
 
 (require "../../digitama/exchange/csv/reader.rkt")
 (require "../../digitama/exchange/csv/readline.rkt")
+(require "../../digitama/exchange/csv/dialect.rkt")
 
 (require racket/logging)
 
@@ -12,13 +13,15 @@
         "1996,Jeep,Grand Cherokee,'MUST SELL!\n\rair, moon roof, loaded',4799.00\n\n"
         "\nwhatever"))
 
+(define dialect (make-csv-dialect #:quote-char #\'))
+
 (displayln '===================================================================)
 (displayln (object-name read-csv-row*))
 ((inst with-logging-to-port Void)
  (current-error-port)
  (λ [] (for ([row (in-list examples)])
          (define /dev/csvin : Input-Port (open-input-string row))
-         (define-values (fields maybe-char) (read-csv-row* /dev/csvin (read-char /dev/csvin) #false #\, #\' #false #false #false #false #false))
+         (define-values (fields maybe-char) (read-csv-row* /dev/csvin (read-char /dev/csvin) dialect #false))
          (printf "~s ==> ~s~n #:n ~a #:next? ~a~n~n"
                  row fields
                  (if (pair? fields) (length fields) 0)
@@ -33,7 +36,8 @@
          (define /dev/csvin : Input-Port (open-input-string row))
          (define maybe-line : (U String EOF) (read-line /dev/csvin 'any))
          (when (string? maybe-line)
-           (define fields (csv-extract-row* /dev/csvin maybe-line #false #\, #\' #false #false #false #false #false))
+           (define end : Index (string-length maybe-line))
+           (define fields (csv-extract-row* /dev/csvin maybe-line 0 end dialect #false))
            (printf "~s ==> ~s~n #:n ~a #:next-leader? ~a~n~n"
                    row fields (if (pair? fields) (length fields) 0) (read-char /dev/csvin)))))
  'debug)
