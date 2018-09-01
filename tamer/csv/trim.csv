@@ -1,0 +1,5 @@
+tolerant_quoting,   "This field should be trimmed"    ,skip-leading-space,#false,skip-trailing-space,#false
+warned_before,  bad  "This field should be trimmed",skip-leading-space,#false,skip-trailing-space,#false
+warned_after,"This field should be trimmed" bad,skip-leading-space,#false,skip-trailing-space,#false
+no_trim,   This field should have leading and trailing spaces  ,skip-leading-space,#false,skip-trailing-space,#false
+do_trim,   This field should be trimed  ,skip-leading-space,#true,skip-trailing-space,#true

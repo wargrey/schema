@@ -79,10 +79,10 @@
           (cond [(>= nidx n) (csv-skip-exceeded-fields /dev/stdin src total npos n nidx dialect strict?)]
                 [else (vector-set! row idx field) (extract-row self this-total npos nidx)])
           (cond [(= nidx n) (vector-set! row idx field) row]
-                [(> nidx 1) (vector-set! row idx field) (csv-log-length-error /dev/stdin src pos n nidx row strict?) #false]
-                [(not (eq? (vector-ref row 0) empty-field)) (csv-log-length-error /dev/stdin src pos n nidx row strict?) #false]
+                [(> nidx 1) (vector-set! row idx field) (csv-log-length-error /dev/stdin src pos n idx row strict?) #false]
+                [(not (eq? (vector-ref row 0) empty-field)) (csv-log-length-error /dev/stdin src pos n idx row strict?) #false]
                 [(CSV-Dialect-skip-empty-line? dialect) #false]
-                [else (csv-log-length-error /dev/stdin src pos n nidx (vector empty-field) strict?) #false])))))
+                [else (csv-log-length-error /dev/stdin src pos n idx (vector empty-field) strict?) #false])))))
   
 (define csv-extract-row* : (-> CSV-StdIn String Index Index CSV-Dialect Boolean (Listof CSV-Field))
   (lambda [/dev/stdin src start end dialect strict?]
@@ -117,7 +117,7 @@
             [else (let ([ch : Char (string-ref src pos)]
                         [next : Nonnegative-Fixnum (+ pos 1)])
                     (cond [(eq? ch <:>) (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>) next)]
-                          [(eq? ch </>) (csv-extract-quoted-field /dev/stdin src total idx start next </> <\> dialect strict?)]
+                          [(eq? ch </>) (csv-extract-quoted-field /dev/stdin src total start next </> <\> dialect strict?)]
                           [(eq? ch <#>) (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>) (+ total 1))]
                           [(char-blank? ch) (extract-field src total (if trim-left? next start)
                                                            trim-left? (if (CSV-Dialect-skip-trailing-space? dialect) end next)
@@ -132,11 +132,16 @@
                                        [else (csv-log-eof-error /dev/stdin src pos strict?) (values src total half-field (+ total 1))])))]
                           [else (extract-field src total start #false next next escaping? previous)]))]))))
 
-(define csv-extract-quoted-field : (-> CSV-StdIn String Index Index Nonnegative-Fixnum Nonnegative-Fixnum
+(define csv-extract-quoted-field : (-> CSV-StdIn String Index Nonnegative-Fixnum Nonnegative-Fixnum
                                        (Option Char) (Option Char) CSV-Dialect Boolean (Values String Index String Nonnegative-Fixnum))
-  (lambda [/dev/stdin src total idx0 start idx </> <\> dialect strict?]
-    (unless (or (= start idx0) (= start (sub1 idx)))
-      (csv-log-out-quotes-error /dev/stdin src idx strict? 'before))
+  (lambda [/dev/stdin src total start idx </> <\> dialect strict?]
+    (if (CSV-Dialect-skip-leading-space? dialect)
+        (unless (= start (- idx 1))
+          (csv-log-out-quotes-error /dev/stdin src idx strict? 'before))
+        (let check ([i : Fixnum (- idx 2)])
+          (when (>= i start)
+            (cond [(char-blank? (string-ref src i)) (check (- i 1))]
+                  [else (csv-log-out-quotes-error /dev/stdin src idx strict? 'before)]))))
 
     (let extract-field ([src : String src]
                         [total : Index total]
@@ -161,19 +166,21 @@
                    (cond [(>= next total) (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>) (+ total 1))]
                          [(eq? (string-ref src next) </>) (extract-field src total start (+ end 2) #true previous)]
                          [else (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>)
-                                       (csv-skip-quoted-rest src total next dialect))])]
+                                       (csv-skip-quoted-rest /dev/stdin src total next dialect strict?))])]
                    [else (extract-field src total start next escaping? previous)]))))))
 
-(define csv-skip-quoted-rest : (-> String Index Nonnegative-Fixnum CSV-Dialect Nonnegative-Fixnum)
-  (lambda [src total idx dialect]
+(define csv-skip-quoted-rest : (-> CSV-StdIn String Index Nonnegative-Fixnum CSV-Dialect Boolean Nonnegative-Fixnum)
+  (lambda [/dev/stdin src total idx dialect strict?]
     (define <:> : Char (CSV-Dialect-delimiter dialect))
     (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
     
-    (let skip ([end : Nonnegative-Fixnum idx])
+    (let skip ([end : Nonnegative-Fixnum idx]
+               [valid? : Boolean #true])
       (cond [(>= end total) (+ total 1)]
-            [(eq? (string-ref src end) <:>) (+ end 1)]
-            [(eq? (string-ref src end) <#>) total]
-            [else (skip (+ end 1))]))))
+            [else (let ([ch (string-ref src end)])
+                    (cond [(eq? ch <:>) (csv-log-if-invalid /dev/stdin src end valid? strict?) (+ end 1)]
+                          [(eq? ch <#>) (csv-log-if-invalid /dev/stdin src end valid? strict?) total]
+                          [else (skip (+ end 1) (and valid? (char-blank? ch)))]))]))))
 
 (define csv-skip-exceeded-fields : (-> CSV-StdIn String Index Index Positive-Index Positive-Fixnum CSV-Dialect Boolean False)
   (lambda [/dev/stdin src total pos n count dialect strict?]
@@ -252,7 +259,7 @@
       (if (char-hex-digit? ch)
           (cond [(>= n #x10FFFF) (read-hexa n (unsafe-fx+ count 1))]
                 [else (read-hexa (unsafe-fx+ (unsafe-fxlshift n 4) (char->decimal ch)) (unsafe-fx+ count 1))])
-          (cond [(= count 0) (csv-log-escape-error /dev/stdin src (unsafe-fx+ idx 1)) (values #\uFFFD 2)]
+          (cond [(= count 0) (csv-log-escape-error /dev/stdin src idx) (values #\uFFFD 2)]
                 [else (values (unicode->char n) (unsafe-fx+ count 2))])))))
 
 (define csv-extract-unicode-char : (-> CSV-StdIn String Nonnegative-Fixnum Nonnegative-Fixnum Positive-Byte (Values Char Nonnegative-Fixnum))
@@ -262,6 +269,6 @@
       (define idx : Nonnegative-Fixnum (unsafe-fx+ cur count))
       (define ch : Char (if (>= idx end) #\x (string-ref src idx)))
       (cond [(>= count total) (values (unicode->char n) (+ count 2))]
-            [(not (char-hex-digit? ch)) (csv-log-escape-error /dev/stdin src (unsafe-fx+ idx 1)) (values #\uFFFD (+ count 2))]
+            [(not (char-hex-digit? ch)) (csv-log-escape-error /dev/stdin src idx) (values #\uFFFD (+ count 2))]
             [(< n #x10FFFF) (read-unicode (unsafe-fx+ (unsafe-fxlshift n 4) (char->decimal ch)) (+ count 1))]
             [else (read-unicode n (+ count 1))]))))

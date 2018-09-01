@@ -132,7 +132,7 @@
        (raise-user-error 'csv "~a" message))]
     [(/dev/stdin src idx level strict? brief)
      (define src-name : Any (csv-input-name /dev/stdin))
-     (define message : String (format "~a: @{~a}[~a]: ~a" src-name src idx brief))
+     (define message : String (format "~a: @{~a}[~a]: ~a" src-name src (+ idx 1) brief))
      (log-message (current-logger) level csv-topic message #false)
      (unless (not strict?)
        (when (input-port? /dev/stdin)
