@@ -9,7 +9,7 @@
 # Open Directory.
 ##
 nobody:*:-2:-2:Unprivileged User:/var/empty:/usr/bin/false
-root:*:0:0:System Administrator:/var/root:/bin/sh
+root:*:0:0:系统管理员:/var/root:/bin/sh
 daemon:*:1:1:System Services:/var/root:/usr/bin/false
 
 # Single line comment is also an empty line
@@ -17,3 +17,7 @@ daemon:*:1:1:System Services:/var/root:/usr/bin/false
 inline_comment:*:266:266:The Last Field Has A Trailing Space:/var:/usr/bin/false # You can try inline comments
 escape_pass:\52:\62\628:\x32\x32\x38:C Style Backslash \x6D4b\x8bd5\1660:C\:\\var:C\:\\usr\\bin\\false
 escape_fail:\U2:\62\628:\x32\x32\x38:C Style Backslash \u6D4b\u8bd5\U660:C\:\\var:C\:\\usr\\bin\\false
+escape_newline:\52:\62\628:\x32\x32\x38:`\#\\newline` is Escaped:/var:/usr\
+/bin\
+/false
+escape_eof:\52:\62\628:\x32\x32\x38:`unexpected \#<eof>`:/var:/usr\

@@ -163,8 +163,7 @@
              (read-quoted-field (if (char? escaped-char) (cons escaped-char srahc) srahc) next-char)]
             [(eq? maybe-char </>)
              (define next-char : (U Char EOF) (read-char /dev/csvin))
-             (cond [(char? <\>) (values (srahc->field srahc) (csv-discard-quoted-rest /dev/csvin next-char dialect strict?))]
-                   [(eq? next-char </>) (read-quoted-field (cons maybe-char srahc) (read-char /dev/csvin))]
+             (cond [(and (not <\>) (eq? next-char </>)) (read-quoted-field (cons maybe-char srahc) (read-char /dev/csvin))]
                    [else (values (srahc->field srahc) (csv-discard-quoted-rest /dev/csvin next-char dialect strict?))])]
             [(csv-try-newline maybe-char /dev/csvin)
              => (λ [[maybe-leader : (U Char EOF)]]

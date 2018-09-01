@@ -164,7 +164,7 @@
                                        [else (csv-log-eof-error /dev/stdin src end strict?) (values src total half-field (+ total 1))]))])]
                   [(eq? ch </>)
                    (cond [(>= next total) (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>) (+ total 1))]
-                         [(eq? (string-ref src next) </>) (extract-field src total start (+ end 2) #true previous)]
+                         [(and (not <\>) (eq? (string-ref src next) </>)) (extract-field src total start (+ end 2) #true previous)]
                          [else (values src total (csv-subfield /dev/stdin previous src start end escaping? </> <\>)
                                        (csv-skip-quoted-rest /dev/stdin src total next dialect strict?))])]
                    [else (extract-field src total start next escaping? previous)]))))))

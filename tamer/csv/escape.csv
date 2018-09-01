@@ -1,0 +1,2 @@
+dquote_fail,\52,\62\628,\x32\x32\x38,"\"ESC is priorer""\" than ""DQuote""",/var,"/usr/bin/false"
+escape_eof,\52,\62\628,\x32\x32\x38,`unexpected \#<eof>`,/var,"/usr
