@@ -204,13 +204,14 @@
             [(eof-object? maybe-char) (csv-log-if-invalid /dev/csvin valid? strict?) #false]
             [else (discard (read-char /dev/csvin) (and valid? (char-blank? maybe-char)))]))))
 
-(define csv-discard-exceeded-fields : (-> Input-Port Positive-Index Integer (Option Char) Char (Option Char) (Option Char) Boolean (Option Char))
+(define csv-discard-exceeded-fields : (-> Input-Port Positive-Index Positive-Fixnum (Option Char) Char (Option Char) (Option Char) Boolean
+                                          (Option Char))
   (lambda [/dev/csvin n count <#> <:> </> <\> strict?]
-    (let skip-row ([maybe-char : (U Char EOF) (read-char /dev/csvin)]
-                   [extras : (Listof CSV-Field) null]
-                   [total : Integer count])
+    (let discard ([maybe-char : (U Char EOF) (read-char /dev/csvin)]
+                  [extras : (Listof CSV-Field) null]
+                  [total : Positive-Fixnum count])
       (define-values (field more?) (csv-read-field /dev/csvin maybe-char <#> <:> </> <\> #false #false))
-      (cond [(eq? more? #true) (skip-row (read-char /dev/csvin) (cons field extras) (+ total 1))]
+      (cond [(eq? more? #true) (discard (read-char /dev/csvin) (cons field extras) (unsafe-fx+ total 1))]
             [else (csv-log-length-error /dev/csvin n (+ total 1) (reverse (cons field extras)) strict?) more?]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

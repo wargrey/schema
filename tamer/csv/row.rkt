@@ -26,14 +26,14 @@
  'debug)
 
 (displayln '===================================================================)
-(displayln (object-name line->csv-row*))
+(displayln (object-name csv-extract-row*))
 ((inst with-logging-to-port Void)
  (current-error-port)
  (λ [] (for ([row (in-list examples)])
          (define /dev/csvin : Input-Port (open-input-string row))
          (define maybe-line : (U String EOF) (read-line /dev/csvin 'any))
          (when (string? maybe-line)
-           (define fields (line->csv-row* /dev/csvin maybe-line #false #\, #\' #false #false #false #false #false))
+           (define fields (csv-extract-row* /dev/csvin maybe-line #false #\, #\' #false #false #false #false #false))
            (printf "~s ==> ~s~n #:n ~a #:next-leader? ~a~n~n"
                    row fields (if (pair? fields) (length fields) 0) (read-char /dev/csvin)))))
  'debug)

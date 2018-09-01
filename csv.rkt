@@ -1,7 +1,7 @@
 #lang typed/racket/base
 
 (provide (all-defined-out))
-(provide CSV-Field CSV-Dialect CSV-Row*)
+(provide CSV-Field CSV-Dialect CSV-Row CSV-Row*)
 
 (require "digitama/exchange/csv/reader.rkt")
 (require "digitama/exchange/csv/readline.rkt")
