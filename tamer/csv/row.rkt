@@ -37,7 +37,7 @@
          (define maybe-line : (U String EOF) (read-line /dev/csvin 'any))
          (when (string? maybe-line)
            (define end : Index (string-length maybe-line))
-           (define fields (csv-extract-row* /dev/csvin maybe-line 0 end dialect #false #true))
+           (define fields (csv-extract-row* /dev/csvin maybe-line end dialect #false #true))
            (printf "~s ==> ~s~n #:n ~a #:next-leader? ~a~n~n"
                    row fields (if (pair? fields) (length fields) 0) (read-char /dev/csvin)))))
  'debug)
