@@ -2,6 +2,8 @@
 
 (provide (all-defined-out))
 
+(require racket/vector)
+
 (define-type CSV-Field String)
 (define-type CSV-Row (Vectorof CSV-Field))
 (define-type CSV-Row* (Pairof CSV-Field (Listof CSV-Field)))
@@ -73,53 +75,70 @@
       (close-input-port /dev/csvin))))
 
 (define csv-log-escape-error : (case-> [Input-Port -> Void]
-                                       [CSV-StdIn String Integer -> Void])
+                                       [CSV-StdIn String Nonnegative-Fixnum -> Void]
+                                       [String Index Index Nonnegative-Fixnum -> Void])
   (let ([brief : String "invalid escape sequence"])
     (case-lambda
       [(/dev/csvin)
        (csv-log-syntax-error /dev/csvin 'warning #false brief)]
       [(/dev/stdin src idx)
-       (csv-log-syntax-error /dev/stdin src idx 'warning #false brief)])))
+       (csv-log-syntax-error /dev/stdin src idx 'warning #false brief)]
+      [(/dev/strin start end idx)
+       (csv-log-syntax-error /dev/strin start end idx 'warning #false brief)])))
 
 (define csv-log-length-error : (case-> [Input-Port Integer Integer (U CSV-Row (Listof CSV-Field)) Boolean -> Void]
-                                       [CSV-StdIn String Integer Integer Integer (U CSV-Row (Listof CSV-Field)) Boolean -> Void])
-  (let ([brief (λ [[expected : Integer] [given : Integer] [in : Any]] : String
+                                       [CSV-StdIn String Nonnegative-Fixnum Integer Integer (U CSV-Row (Listof CSV-Field)) Boolean -> Void]
+                                       [String Index Index Nonnegative-Fixnum Integer Integer (U CSV-Row (Listof CSV-Field)) Boolean -> Void])
+  (let ([brief (λ [[expected : Integer] [given : Integer] [in : (U CSV-Row (Listof CSV-Field))]] : String
                  (format "field length mismatch: expected ~a, given ~a ~a ~s"
-                   expected given (if (< given expected) 'in 'with) in))])
+                   expected given (if (< given expected) 'in 'with)
+                   (if (vector? in) (vector-take in given) in)))])
     (case-lambda
     [(/dev/csvin expected given in strict?)
      (csv-log-syntax-error /dev/csvin 'error strict? (brief expected given in))]
     [(/dev/stdin src idx expected given in strict?)
-     (csv-log-syntax-error /dev/stdin src idx 'error strict? (brief expected given in))])))
+     (csv-log-syntax-error /dev/stdin src idx 'error strict? (brief expected given in))]
+    [(/dev/strin start end idx expected given in strict?)
+     (csv-log-syntax-error /dev/strin start end idx 'error strict? (brief expected given in))])))
 
 (define csv-log-eof-error : (case-> [Input-Port Boolean -> Void]
-                                    [CSV-StdIn String Integer Boolean -> Void])
+                                    [CSV-StdIn String Nonnegative-Fixnum Boolean -> Void]
+                                    [String Index Index Nonnegative-Fixnum Boolean -> Void])
   (let ([brief : String "unexpected eof of file"])
     (case-lambda
       [(/dev/csvin strict?)
        (csv-log-syntax-error /dev/csvin 'warning strict? brief)]
       [(/dev/stdin src idx strict?)
-       (csv-log-syntax-error /dev/stdin src idx 'warning strict? brief)])))
+       (csv-log-syntax-error /dev/stdin src idx 'warning strict? brief)]
+      [(/dev/strin start end idx strict?)
+       (csv-log-syntax-error /dev/strin start end idx 'warning strict? brief)])))
 
 (define csv-log-out-quotes-error : (case-> [Input-Port Boolean Symbol -> Void]
-                                           [CSV-StdIn String Integer Boolean Symbol -> Void])
+                                           [CSV-StdIn String Nonnegative-Fixnum Boolean Symbol -> Void]
+                                           [String Index Index Nonnegative-Fixnum Boolean Symbol -> Void])
   (let ([brief (λ [[position : Symbol]] : String (format "ignored non-whitespace chars ~a quote char" position))])
     (case-lambda
       [(/dev/csvin strict? position)
        (csv-log-syntax-error /dev/csvin 'warning strict? (brief position))]
       [(/dev/stdin src idx strict? position)
-       (csv-log-syntax-error /dev/stdin src idx 'warning strict? (brief position))])))
+       (csv-log-syntax-error /dev/stdin src idx 'warning strict? (brief position))]
+      [(/dev/strin start end idx strict? position)
+       (csv-log-syntax-error /dev/strin start end idx 'warning strict? (brief position))])))
 
 (define csv-log-if-invalid : (case-> [Input-Port Boolean Boolean -> Void]
-                                     [CSV-StdIn String Integer Boolean Boolean -> Void])
+                                     [CSV-StdIn String Nonnegative-Fixnum Boolean Boolean -> Void]
+                                     [String Index Index Nonnegative-Fixnum Boolean Boolean -> Void])
   (case-lambda
     [(/dev/csvin valid? strict?)
      (when (not valid?) (csv-log-out-quotes-error /dev/csvin strict? 'after))]
     [(/dev/stdin src idx valid? strict?)
-     (when (not valid?) (csv-log-out-quotes-error /dev/stdin src idx strict? 'after))]))
+     (when (not valid?) (csv-log-out-quotes-error /dev/stdin src idx strict? 'after))]
+    [(/dev/strin start end idx valid? strict?)
+     (when (not valid?) (csv-log-out-quotes-error /dev/strin start end idx strict? 'after))]))
 
 (define csv-log-syntax-error : (case-> [Input-Port Log-Level Boolean String -> Void]
-                                       [CSV-StdIn String Integer Log-Level Boolean String -> Void])
+                                       [CSV-StdIn String Nonnegative-Fixnum Log-Level Boolean String -> Void]
+                                       [String Index Index Nonnegative-Fixnum Log-Level Boolean String -> Void])
   (case-lambda
     [(/dev/csvin level strict? brief)
      (define-values (line column position) (port-next-location /dev/csvin))
@@ -137,4 +156,9 @@
      (unless (not strict?)
        (when (input-port? /dev/stdin)
          (csv-close-input-port /dev/stdin))
-       (raise-user-error 'csv "~a" message))]))
+       (raise-user-error 'csv "~a" message))]
+    [(/dev/strin start end idx level strict? brief)
+     (csv-log-syntax-error /dev/strin
+                           (substring /dev/strin start end)
+                           (assert (- idx start) index?)
+                           level strict? brief)]))

@@ -20,7 +20,7 @@
       (dynamic-wind
        (λ [] (void))
        (λ [] (let ([/dev/csvin (csv-input-port /dev/stdin skip-header? #false)])
-               (reverse (if (csv-readline? /dev/csvin)
+               (reverse (if (not (port-counts-lines? /dev/csvin))
                             (csv-readline/reverse /dev/csvin (assert n index?) (or dialect csv::rfc) strict? trim-line?)
                             (csv-read/reverse /dev/csvin (assert n index?) (or dialect csv::rfc) skip-header? strict? trim-line?)))))
        (λ [] (custodian-shutdown-all (current-custodian)))))))
@@ -33,7 +33,7 @@
       (dynamic-wind
        (λ [] (void))
        (λ [] (let ([/dev/csvin (csv-input-port /dev/stdin skip-header? #false)])
-               (reverse (if (csv-readline? /dev/csvin)
+               (reverse (if (not (port-counts-lines? /dev/csvin))
                             (csv-readline*/reverse /dev/csvin (or dialect csv::rfc) strict? trim-line?)
                             (csv-read*/reverse /dev/csvin (or dialect csv::rfc) skip-header? strict? trim-line?)))))
        (λ [] (custodian-shutdown-all (current-custodian)))))))
@@ -43,7 +43,7 @@
                      (Sequenceof (Vectorof CSV-Field)))
   (lambda [/dev/stdin n skip-header? #:dialect [dialect #false] #:strict? [strict? #false] #:skip-empty-line? [trim-line? #true]]
     (define /dev/csvin : Input-Port (csv-input-port /dev/stdin skip-header? #true))
-    (if (csv-readline? /dev/csvin)
+    (if (not (port-counts-lines? /dev/csvin))
         (in-csv-line-port /dev/csvin (assert n index?) (or dialect csv::rfc) strict? trim-line?)
         (in-csv-port /dev/csvin (assert n index?) (or dialect csv::rfc) skip-header? strict? trim-line?))))
 
@@ -52,7 +52,7 @@
                       (Sequenceof (Pairof CSV-Field (Listof CSV-Field))))
   (lambda [/dev/stdin skip-header? #:dialect [dialect #false] #:strict? [strict? #false] #:skip-empty-line? [trim-line? #true]]
     (define /dev/csvin : Input-Port (csv-input-port /dev/stdin skip-header? #true))
-    (if (csv-readline? /dev/csvin)
+    (if (not (port-counts-lines? /dev/csvin))
         (in-csv-line-port* /dev/csvin (or dialect csv::rfc) strict? trim-line?)
         (in-csv-port* /dev/csvin (or dialect csv::rfc) skip-header? strict? trim-line?))))
 
