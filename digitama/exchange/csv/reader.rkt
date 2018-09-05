@@ -80,7 +80,7 @@
     (define row : (Vectorof CSV-Field) (make-vector n empty-field))
     (let read-row ([maybe-char : (U Char EOF) leading-char]
                    [idx : Index 0])
-      (define-values (field more?) (csv-read-field/trim-left /dev/csvin maybe-char dialect strict?))
+      (define-values (field more?) (csv-read-field /dev/csvin maybe-char dialect strict?))
       (define nidx : Positive-Fixnum (+ idx 1))
       (if (eq? more? #true)
           (cond [(>= nidx n) (read-row (or (csv-discard-exceeded-fields /dev/csvin n nidx dialect strict?) eof) 0)]
@@ -95,7 +95,7 @@
   (lambda [/dev/csvin leading-char dialect strict? trim-line?]
     (let read-row ([maybe-char : (U Char EOF) leading-char]
                    [sdleif : (Listof CSV-Field) null])
-      (define-values (field more?) (csv-read-field/trim-left /dev/csvin maybe-char dialect strict?))
+      (define-values (field more?) (csv-read-field /dev/csvin maybe-char dialect strict?))
       (cond [(eq? more? #true) (read-row (read-char /dev/csvin) (cons field sdleif))]
             [(pair? sdleif) (values (reverse (cons field sdleif)) more?)]
             [(not (eq? field empty-field)) (values (list field) more?)]
@@ -103,21 +103,6 @@
             [else (values empty-row* more?)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define csv-read-field/trim-left : (-> Input-Port (U Char EOF) CSV-Dialect Boolean (Values CSV-Field (U Char Boolean)))
-  (lambda [/dev/csvin leading-char dialect strict?]
-    (cond [(not (CSV-Dialect-skip-leading-space? dialect)) (csv-read-field /dev/csvin leading-char dialect strict?)]
-          [else (let ([<:> (CSV-Dialect-delimiter dialect)]
-                      [</> (CSV-Dialect-quote-char dialect)]
-                      [<#> (CSV-Dialect-comment-char dialect)]
-                      [<\> (CSV-Dialect-escape-char dialect)])
-                  (let read-without-whitespace ([maybe-char : (U Char EOF) leading-char])
-                    (cond [(eq? maybe-char <:>) (values empty-field #true)]
-                          [(eq? maybe-char </>) (csv-read-quoted-field /dev/csvin </> <\> dialect strict?)]
-                          [(eof-object? maybe-char) (values empty-field #false)]
-                          [(char-blank? maybe-char) (read-without-whitespace (read-char /dev/csvin))]
-                          [(csv-try-newline* maybe-char /dev/csvin <#>) => (csv-newline-values empty-field)]
-                          [else (csv-read-field /dev/csvin maybe-char dialect strict?)])))])))
-
 (define csv-read-field : (-> Input-Port (U Char EOF) CSV-Dialect Boolean (Values CSV-Field (U Char Boolean)))
   (lambda [/dev/csvin leading-char dialect strict?]
     (define <:> : Char (CSV-Dialect-delimiter dialect))
@@ -127,29 +112,26 @@
     (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
 
     (let read-field ([srahc : (Listof Char) null]
+                     [trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect)]
                      [maybe-char : (U Char EOF) leading-char])
       (cond [(eq? maybe-char <:>) (values (srahc->field/trim-right srahc trim-right?) #true)]
-            [(eq? maybe-char </>) (csv-read-quoted-field/check /dev/csvin srahc </> <\> dialect strict?)]
+            [(eq? maybe-char </>) (csv-read-quoted-field /dev/csvin srahc </> <\> dialect strict?)]
             [(csv-try-newline* maybe-char /dev/csvin <#>) => (csv-newline-values (srahc->field/trim-right srahc trim-right?))]
             [(eof-object? maybe-char) (values (srahc->field/trim-right srahc trim-right?) #false)]
             [(eq? maybe-char <\>) ; `#true` -> c style escape char has been set'
              (define-values (escaped-char next-char) (csv-read-escaped-char /dev/csvin))
-             (cond [(char? escaped-char) (read-field (cons escaped-char srahc) next-char)]
-                   [else (csv-log-eof-error /dev/csvin strict?) (read-field srahc next-char)])]
-            [else (read-field (cons maybe-char srahc) (read-char /dev/csvin))]))))
+             (cond [(char? escaped-char) (read-field (cons escaped-char srahc) #false next-char)]
+                   [else (csv-log-eof-error /dev/csvin strict?) (read-field srahc #false next-char)])]
+            [(char-blank? maybe-char) (read-field (if (not trim-left?) (cons maybe-char srahc) srahc) trim-left? (read-char /dev/csvin))]
+            [else (read-field (cons maybe-char srahc) #false (read-char /dev/csvin))]))))
 
-(define csv-read-quoted-field/check : (-> Input-Port (Listof Char) (Option Char) (Option Char) CSV-Dialect Boolean
-                                          (Values CSV-Field (U Char Boolean)))
+(define csv-read-quoted-field : (-> Input-Port (Listof Char) (Option Char) (Option Char) CSV-Dialect Boolean (Values CSV-Field (U Char Boolean)))
   (lambda [/dev/csvin leading-srahc </> <\> dialect strict?]
     ;; NOTE
     ; No matter the leading and trailing whitespaces should be skipped or not,
     ; we tolerate the whitespaces around the quoted field but do not count them as part of the field.
     (unless (for/and : Boolean ([ch : Char (in-list leading-srahc)]) (char-blank? ch))
       (csv-log-out-quotes-error /dev/csvin strict? 'before))
-    (csv-read-quoted-field /dev/csvin </> <\> dialect strict?)))
-
-(define csv-read-quoted-field : (-> Input-Port (Option Char) (Option Char) CSV-Dialect Boolean (Values CSV-Field (U Char Boolean)))
-  (lambda [/dev/csvin </> <\> dialect strict?]
     (let read-quoted-field ([srahc : (Listof Char) null]
                             [maybe-char : (U Char EOF) (read-char /dev/csvin)])
       (cond [(eof-object? maybe-char)
