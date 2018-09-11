@@ -25,3 +25,11 @@ csv::rfc
    (λ [] (for/list : (Listof (Vectorof CSV-Field)) ([row (in-csv fixed-row.csv 5 #true)])
            row))
    'debug))
+
+(displayln '===================================================================)
+(displayln 'read-string)
+((inst with-logging-to-port (Listof (Vectorof CSV-Field)))
+ (current-error-port)
+ (λ [] (for/list : (Listof (Vectorof CSV-Field)) ([row (in-csv (file->string fixed-row.csv) 5 #true)])
+         row))
+ 'debug)
