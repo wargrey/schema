@@ -19,7 +19,6 @@
                                                           #:when (equal? (last row) "#true")) row)))
    'debug))
 
-
 (displayln '===================================================================)
 (displayln 'read-line)
 (parameterize ([port-count-lines-enabled #false])
@@ -30,3 +29,14 @@
                  (for/list : (Listof (Listof CSV-Field)) ([row (in-csv* space.csv #false #:dialect csv::trim)]
                                                           #:when (equal? (last row) "#true")) row)))
    'debug))
+
+(displayln '===================================================================)
+(displayln 'read-string)
+((inst with-logging-to-port (U (Listof (Listof CSV-Field)) (Listof (Vectorof CSV-Field))))
+ (current-error-port)
+ (λ [] (let ([/dev/strin (file->string space.csv)])
+         (append (for/list : (Listof (Listof CSV-Field)) ([row (in-csv* /dev/strin #false #:dialect csv::rfc)]
+                                                          #:when (equal? (last row) "#false")) row)
+                 (for/list : (Listof (Listof CSV-Field)) ([row (in-csv* /dev/strin #false #:dialect csv::trim)]
+                                                          #:when (equal? (last row) "#true")) row))))
+ 'debug)

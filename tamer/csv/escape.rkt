@@ -16,7 +16,6 @@
    (λ [] (sequence->list (in-csv* escape.csv #false #:dialect csv::escape)))
    'debug))
 
-
 (displayln '===================================================================)
 (displayln 'read-line)
 (parameterize ([port-count-lines-enabled #false])
@@ -24,3 +23,10 @@
    (current-error-port)
    (λ [] (sequence->list (in-csv* escape.csv #false #:dialect csv::escape)))
    'debug))
+
+(displayln '===================================================================)
+(displayln 'read-string)
+((inst with-logging-to-port (U (Listof (Listof CSV-Field)) (Listof (Vectorof CSV-Field))))
+ (current-error-port)
+ (λ [] (sequence->list (in-csv* (file->string escape.csv) #false #:dialect csv::escape)))
+ 'debug)

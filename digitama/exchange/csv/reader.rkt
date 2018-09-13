@@ -122,7 +122,7 @@
             [(eq? maybe-char </>) (csv-read-quoted-field /dev/csvin srahc </> <\> dialect strict?)]
             [(csv-try-newline* maybe-char /dev/csvin <#>) => (csv-newline-values (srahc->field/trim-right srahc trim-right?))]
             [(eof-object? maybe-char) (values (srahc->field/trim-right srahc trim-right?) #false)]
-            [(eq? maybe-char <\>) ; `#true` -> c style escape char has been set
+            [(eq? maybe-char <\>) ; `#true` => c style escape char has been set
              (define-values (escaped-char next-char) (csv-read-escaped-char /dev/csvin))
              (cond [(char? escaped-char) (read-field (cons escaped-char srahc) #false next-char)]
                    [else (csv-log-eof-error /dev/csvin strict?) (read-field srahc #false next-char)])]
@@ -142,9 +142,6 @@
       (cond [(eof-object? maybe-char)
              (csv-log-eof-error /dev/csvin strict?)
              (values (srahc->field srahc) #false)]
-            [(eq? maybe-char <\>) ; `#true` -> 'c style escape char has been set
-             (define-values (escaped-char next-char) (csv-read-escaped-char /dev/csvin))
-             (read-quoted-field (if (char? escaped-char) (cons escaped-char srahc) srahc) next-char)]
             [(eq? maybe-char </>)
              (define next-char : (U Char EOF) (read-char /dev/csvin))
              (cond [(and (not <\>) (eq? next-char </>)) (read-quoted-field (cons maybe-char srahc) (read-char /dev/csvin))]
@@ -152,6 +149,9 @@
             [(csv-try-newline maybe-char /dev/csvin)
              => (λ [[maybe-leader : (U Char EOF)]]
                   (read-quoted-field (cons #\newline srahc) maybe-leader))]
+            [(eq? maybe-char <\>) ; `#true` => c style escape char has been set
+             (define-values (escaped-char next-char) (csv-read-escaped-char /dev/csvin))
+             (read-quoted-field (if (char? escaped-char) (cons escaped-char srahc) srahc) next-char)]
             [else (read-quoted-field (cons maybe-char srahc) (read-char /dev/csvin))]))))
 
 (define csv-discard-quoted-rest : (-> Input-Port (U Char EOF) CSV-Dialect Boolean (U Char Boolean))
@@ -177,7 +177,7 @@
                   [total : Positive-Fixnum count])
       (define-values (field more?) (csv-read-field /dev/csvin maybe-char dialect #false))
       (cond [(eq? more? #true) (discard (read-char /dev/csvin) (cons field extras) (unsafe-fx+ total 1))]
-            [else (csv-log-length-error /dev/csvin n (+ total 1) (reverse (cons field extras)) strict?) more?]))))
+            [else (csv-log-length-error /dev/csvin n (unsafe-fx+ total 1) (reverse (cons field extras)) strict?) more?]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-try-newline : (-> (U Char EOF) Input-Port (U Char EOF False))

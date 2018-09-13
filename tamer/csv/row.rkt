@@ -2,6 +2,7 @@
 
 (require "../../digitama/exchange/csv/reader.rkt")
 (require "../../digitama/exchange/csv/readline.rkt")
+(require "../../digitama/exchange/csv/string.rkt")
 (require "../../digitama/exchange/csv/dialect.rkt")
 
 (require racket/logging)
@@ -42,3 +43,14 @@
                    row fields (if (pair? fields) (length fields) 0) (read-char /dev/csvin)))))
  'debug)
 
+(displayln '===================================================================)
+(displayln (object-name csv-split-row*))
+((inst with-logging-to-port Void)
+ (current-error-port)
+ (λ [] (for ([row (in-list examples)])
+         (define end : Index (string-length row))
+         (define-values (fields npos) (csv-split-row* row end 0 dialect #false #true))
+         (printf "~s ==> ~s~n #:n ~a #:next-leader? ~a~n~n"
+                 row fields (if (pair? fields) (length fields) 0)
+                 (if (>= npos end) eof (string-ref row npos)))))
+ 'debug)

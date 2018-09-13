@@ -20,4 +20,4 @@ escape_fail:\U2:\62\628:\x32\x32\x38:C Style Backslash \u6D4b\u8bd5\U660:C\:\\va
 escape_newline:\52:\62\628:\x32\x32\x38:`\#\\newline` is Escaped:/var:/usr\
 /bin\
 /false
-escape_eof:\52:\62\628:\x32\x32\x38:`unexpected \#<eof>`:/var:/usr\
+escape_eof:\52:\62\628:\x32\x32\x38:`Unexpected \#<eof> After Trailing Spaces`:/var:/usr  \

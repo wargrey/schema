@@ -4,7 +4,7 @@
 
 (require racket/logging)
 
-(define unix.csv : Path-String (#%csv))
+(define unix.csv : Path (#%csv))
 
 csv::unix
 
@@ -16,7 +16,6 @@ csv::unix
    (λ [] (sequence->list (in-csv* unix.csv #false #:dialect csv::unix)))
    'debug))
 
-
 (displayln '===================================================================)
 (displayln 'read-line)
 (parameterize ([port-count-lines-enabled #false])
@@ -24,3 +23,10 @@ csv::unix
    (current-error-port)
    (λ [] (sequence->list (in-csv* unix.csv #false #:dialect csv::unix)))
    'debug))
+
+(displayln '===================================================================)
+(displayln 'read-string)
+((inst with-logging-to-port (U (Listof (Listof CSV-Field)) (Listof (Vectorof CSV-Field))))
+ (current-error-port)
+ (λ [] (sequence->list (in-csv* (file->string unix.csv) #false #:dialect csv::unix)))
+ 'debug)

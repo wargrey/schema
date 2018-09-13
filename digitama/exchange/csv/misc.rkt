@@ -53,8 +53,8 @@
 (define csv-input-source : (-> CSV-StdIn Boolean (U Input-Port String))
   (lambda [/dev/stdin trace?]
     (cond [(input-port? /dev/stdin) /dev/stdin]
-          [(path? /dev/stdin) (open-input-file /dev/stdin)]
-          [(regexp-match? #px"\\.csv$" /dev/stdin) (open-input-file (format "~a" /dev/stdin))]
+          [(path? /dev/stdin) (csv-input-port /dev/stdin trace?)]
+          [(regexp-match? #px"\\.csv$" /dev/stdin) (csv-input-port (string->path (format "~a" /dev/stdin)) trace?)]
           [(bytes? /dev/stdin) (bytes->string/utf-8 /dev/stdin)]
           [else /dev/stdin])))
 
@@ -63,7 +63,6 @@
     (define /dev/csvin : Input-Port
       (cond [(input-port? /dev/stdin) /dev/stdin]
             [(path? /dev/stdin) (open-input-file /dev/stdin)]
-            [(regexp-match? #px"\\.csv$" /dev/stdin) (open-input-file (format "~a" /dev/stdin))]
             [(bytes? /dev/stdin) (open-input-bytes /dev/stdin csv-bytes-name)]
             [else (open-input-string /dev/stdin csv-bytes-name)]))
 
@@ -86,7 +85,7 @@
       [(/dev/csvin)
        (csv-log-syntax-error /dev/csvin 'warning #false brief)]
       [(/dev/stdin src idx)
-       (csv-log-syntax-error /dev/stdin src idx 'warning #false brief)])))
+       (csv-log-syntax-error /dev/stdin src idx 1 'warning #false brief)])))
 
 (define csv-log-length-error : (case-> [Input-Port Integer Integer (U CSV-Row (Listof CSV-Field)) Boolean -> Void]
                                        [CSV-StdIn* String Nonnegative-Fixnum Integer Integer (U CSV-Row (Listof CSV-Field)) Boolean -> Void])
@@ -98,7 +97,7 @@
     [(/dev/csvin expected given in strict?)
      (csv-log-syntax-error /dev/csvin 'error strict? (brief expected given in))]
     [(/dev/stdin src idx expected given in strict?)
-     (csv-log-syntax-error /dev/stdin src idx 'error strict? (brief expected given in))])))
+     (csv-log-syntax-error /dev/stdin src idx 1 'error strict? (brief expected given in))])))
 
 (define csv-log-eof-error : (case-> [Input-Port Boolean -> Void]
                                     [CSV-StdIn* String Nonnegative-Fixnum Boolean -> Void])
@@ -107,7 +106,7 @@
       [(/dev/csvin strict?)
        (csv-log-syntax-error /dev/csvin 'warning strict? brief)]
       [(/dev/stdin src idx strict?)
-       (csv-log-syntax-error /dev/stdin src idx 'warning strict? brief)])))
+       (csv-log-syntax-error /dev/stdin src idx 0 'warning strict? brief)])))
 
 (define csv-log-out-quotes-error : (case-> [Input-Port Boolean Symbol -> Void]
                                            [CSV-StdIn* String Nonnegative-Fixnum Boolean Symbol -> Void])
@@ -116,7 +115,7 @@
       [(/dev/csvin strict? position)
        (csv-log-syntax-error /dev/csvin 'warning strict? (brief position))]
       [(/dev/stdin src idx strict? position)
-       (csv-log-syntax-error /dev/stdin src idx 'warning strict? (brief position))])))
+       (csv-log-syntax-error /dev/stdin src idx 0 'warning strict? (brief position))])))
 
 (define csv-log-if-invalid : (case-> [Input-Port Boolean Boolean -> Void]
                                      [CSV-StdIn* String Nonnegative-Fixnum Boolean Boolean -> Void])
@@ -124,10 +123,10 @@
     [(/dev/csvin valid? strict?)
      (when (not valid?) (csv-log-out-quotes-error /dev/csvin strict? 'after))]
     [(/dev/stdin src idx valid? strict?)
-     (when (not valid?) (csv-log-out-quotes-error /dev/stdin src idx strict? 'after))]))
+     (when (not valid?) (csv-log-out-quotes-error /dev/stdin src (+ (assert idx index?) 1) strict? 'after))]))
 
 (define csv-log-syntax-error : (case-> [Input-Port Log-Level Boolean String -> Void]
-                                       [CSV-StdIn* String Nonnegative-Fixnum Log-Level Boolean String -> Void])
+                                       [CSV-StdIn* String Nonnegative-Fixnum Byte Log-Level Boolean String -> Void])
   (case-lambda
     [(/dev/csvin level strict? brief)
      (define-values (line column position) (port-next-location /dev/csvin))
@@ -138,14 +137,14 @@
      (unless (not strict?)
        (csv-close-input-port /dev/csvin)
        (raise-user-error 'csv "~a" message))]
-    [(/dev/stdin src idx level strict? brief)
+    [(/dev/stdin src idx idx0 level strict? brief)
      (define-values (src-name strin pos)
        (if (not /dev/stdin)
            (let ([start (search-sol src (- idx 1))]
-                 [end (search-sol src idx)])
+                 [end (search-eol src idx)])
              (values csv-string-name (substring src start end) (- idx start)))
            (values (csv-input-name /dev/stdin) src idx)))
-     (define message : String (format "~a: @{~a}[~a]: ~a" src-name src (+ pos 1) brief))
+     (define message : String (format "~a: @{~a}[~a]: ~a" src-name strin (+ pos idx0) brief))
      (log-message (current-logger) level csv-topic message #false)
      (unless (not strict?)
        (when (input-port? /dev/stdin)
