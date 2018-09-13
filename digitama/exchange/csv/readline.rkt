@@ -74,17 +74,17 @@
     (let extract-row ([src : String src]
                       [eol : Index eol]
                       [pos : Index 0]
-                      [idx : Index 0])
+                      [count : Index 0])
       (define-values (self this-eol field npos) (csv-extract-field /dev/csvin src eol pos dialect strict?))
-      (define nidx : Positive-Fixnum (+ idx 1))
+      (define ncount : Positive-Fixnum (+ count 1))
       (if (<= npos this-eol) ; has more
-          (cond [(>= nidx n) (csv-report-exceeded-fields /dev/csvin src eol npos n nidx dialect strict?)]
-                [else (vector-set! row idx field) (extract-row self this-eol npos nidx)])
-          (cond [(= nidx n) (vector-set! row idx field) row]
-                [(> nidx 1) (vector-set! row idx field) (csv-log-length-error /dev/csvin src pos n nidx row strict?) #false]
-                [(not (eq? field empty-field)) (csv-log-length-error /dev/csvin src pos n nidx (vector field) strict?) #false]
+          (cond [(>= ncount n) (csv-report-exceeded-fields /dev/csvin src eol npos n ncount dialect strict?)]
+                [else (vector-set! row count field) (extract-row self this-eol npos ncount)])
+          (cond [(= ncount n) (vector-set! row count field) row]
+                [(> ncount 1) (vector-set! row count field) (csv-log-length-error /dev/csvin src pos n ncount row strict?) #false]
+                [(not (eq? field empty-field)) (csv-log-length-error /dev/csvin src pos n ncount (vector field) strict?) #false]
                 [(or trim-line? (eof-object? (peek-char /dev/csvin))) #false]
-                [else (csv-log-length-error /dev/csvin src pos n nidx (vector empty-field) strict?) #false])))))
+                [else (csv-log-length-error /dev/csvin src pos n ncount (vector empty-field) strict?) #false])))))
   
 (define csv-extract-row* : (-> Input-Port String Index CSV-Dialect Boolean Boolean (Listof CSV-Field))
   (lambda [/dev/csvin src eol dialect strict? trim-line?]
@@ -214,6 +214,9 @@
                            (let-values ([(escaped-char span) (csv-extract-escaped-char /dev/csvin src end ncur)])
                              (string-set! dest idx escaped-char) (escape (unsafe-fx+ ncur span) (unsafe-fx+ idx 1)))]
                           [(eq? ch </>) (string-set! dest idx ch) (escape (unsafe-fx+ ncur 1) (unsafe-fx+ idx 1))]
+                          [(eq? ch #\return)
+                           (let ([span (if (and (< ncur end) (eq? (string-ref src ncur) #\linefeed)) 1 0)])
+                             (string-set! dest idx #\newline) (escape (unsafe-fx+ ncur span) (unsafe-fx+ idx 1)))]
                           [else (string-set! dest idx ch) (escape ncur (unsafe-fx+ idx 1))]))]))))
 
 (define csv-extract-escaped-char : (-> CSV-StdIn* String Nonnegative-Fixnum Nonnegative-Fixnum (Values Char Nonnegative-Fixnum))

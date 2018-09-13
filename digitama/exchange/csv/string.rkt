@@ -74,28 +74,28 @@
 (define csv-split-row : (-> String Index Index Positive-Index CSV-Dialect Boolean Boolean (Values (Option CSV-Row) Nonnegative-Fixnum))
   (lambda [/dev/strin eos pos n dialect strict? trim-line?]
     (define row : CSV-Row (make-vector n empty-field))
-    (let extract-row ([pos : Nonnegative-Fixnum pos]
-                      [idx : Index 0])
+    (let split-row ([pos : Nonnegative-Fixnum pos]
+                    [count : Index 0])
       (define-values (field npos more?) (csv-split-field /dev/strin eos pos dialect strict?))
-      (define nidx : Positive-Fixnum (+ idx 1))
+      (define ncount : Positive-Fixnum (+ count 1))
       (if (and more?)
-          (cond [(>= nidx n) (extract-row (csv-skip-exceeded-fields /dev/strin eos npos n nidx dialect strict?) 0)]
-                [else (vector-set! row idx field) (extract-row npos nidx)])
-          (cond [(= nidx n) (vector-set! row idx field) (values row npos)]
-                [(> nidx 1) (vector-set! row idx field) (csv-log-length-error #false /dev/strin pos n idx row strict?) (values #false npos)]
-                [(not (eq? (vector-ref row 0) empty-field)) (csv-log-length-error #false /dev/strin pos n idx row strict?) (values #false npos)]
-                [(or trim-line? (not more?)) (values #false npos)]
-                [else (csv-log-length-error #false /dev/strin pos n idx (vector empty-field) strict?) (values #false npos)])))))
+          (cond [(>= ncount n) (split-row (csv-skip-exceeded-fields /dev/strin eos npos n ncount dialect strict?) 0)]
+                [else (vector-set! row count field) (split-row npos ncount)])
+          (cond [(= ncount n) (vector-set! row count field) (values row npos)]
+                [(> ncount 1) (vector-set! row count field) (csv-log-length-error #false /dev/strin pos n ncount row strict?) (values #false npos)]
+                [(not (eq? field empty-field)) (csv-log-length-error #false /dev/strin pos n ncount (vector field) strict?) (values #false npos)]
+                [(or trim-line? (>= npos eos)) (values #false npos)]
+                [else (csv-log-length-error #false /dev/strin pos n ncount (vector empty-field) strict?) (values #false npos)])))))
   
 (define csv-split-row* : (-> String Index Index CSV-Dialect Boolean Boolean (Values (Listof CSV-Field) Nonnegative-Fixnum))
   (lambda [/dev/strin eos pos dialect strict? trim-line?]
-    (let extract-row ([pos : Nonnegative-Fixnum pos]
-                      [sdleif : (Listof CSV-Field) null])
+    (let split-row ([pos : Nonnegative-Fixnum pos]
+                    [sdleif : (Listof CSV-Field) null])
       (define-values (field npos more?) (csv-split-field /dev/strin eos pos dialect strict?))
-      (cond [(and more?) (extract-row npos (cons field sdleif))]
+      (cond [(and more?) (split-row npos (cons field sdleif))]
             [(pair? sdleif) (values (reverse (cons field sdleif)) npos)]
             [(not (eq? field empty-field)) (values (list field) npos)]
-            [(or trim-line? (not more?)) (values null npos)]
+            [(or trim-line? (>= npos eos)) (values null npos)]
             [else (values empty-row* npos)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -160,11 +160,11 @@
                           [else (extract-quoted-field start next escaping?)]))]))))
 
 (define csv-skip-quoted-rest : (-> String Index Nonnegative-Fixnum CSV-Dialect Boolean (Values Nonnegative-Fixnum Boolean))
-  (lambda [/dev/strin eos idx dialect strict?]
+  (lambda [/dev/strin eos pos dialect strict?]
     (define <:> : Char (CSV-Dialect-delimiter dialect))
     (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
     
-    (let skip ([pos : Nonnegative-Fixnum idx]
+    (let skip ([pos : Nonnegative-Fixnum pos]
                [valid? : Boolean #true])
       (cond [(>= pos eos) (values eos #false)]
             [else (let ([ch (string-ref /dev/strin pos)])

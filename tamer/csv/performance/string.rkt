@@ -9,5 +9,6 @@
 (printf "str: ")
 (define vectors : (Listof (Vectorof CSV-Field))
   (with-logging-to-port (current-error-port)
-    (λ [] (time (read-csv (file->string StateDepartment.csv) 28 #true)))
+    (λ [] (time (let ([/dev/strin (file->string StateDepartment.csv)])
+                  (read-csv /dev/strin 28 #true))))
     'debug))

@@ -18,7 +18,6 @@
         (read-csv empty.csv 2 #false #:dialect csv::rfc #:skip-empty-line? #false)
         (read-csv* empty.csv #false #:dialect csv::rfc #:skip-empty-line? #false)))
 
-
 (displayln '===================================================================)
 (displayln 'read-line)
 (parameterize ([port-count-lines-enabled #false])
@@ -30,3 +29,15 @@
         (sequence->list (in-csv* empty.csv #false #:dialect csv::rfc #:skip-empty-line? #false))
         (read-csv empty.csv 2 #false #:dialect csv::rfc #:skip-empty-line? #false)
         (read-csv* empty.csv #false #:dialect csv::rfc #:skip-empty-line? #false)))
+
+(displayln '===================================================================)
+(displayln 'read-string)
+(let ([/dev/strin (file->string empty.csv)])
+  (list ((inst with-logging-to-port (U (Listof (Listof CSV-Field)) (Listof (Vectorof CSV-Field))))
+         (current-error-port)
+         (λ [] (sequence->list (in-csv /dev/strin 2 #false #:dialect csv::rfc #:skip-empty-line? #false)))
+         'debug)
+        
+        (sequence->list (in-csv* /dev/strin #false #:dialect csv::rfc #:skip-empty-line? #false))
+        (read-csv /dev/strin 2 #false #:dialect csv::rfc #:skip-empty-line? #false)
+        (read-csv* /dev/strin #false #:dialect csv::rfc #:skip-empty-line? #false)))

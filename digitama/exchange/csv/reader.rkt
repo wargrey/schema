@@ -83,28 +83,28 @@
   (lambda [/dev/csvin n leading-char dialect strict? trim-line?]
     (define row : (Vectorof CSV-Field) (make-vector n empty-field))
     (let read-row ([maybe-char : (U Char EOF) leading-char]
-                   [idx : Index 0])
-      (define-values (field more?) (csv-read-field /dev/csvin maybe-char dialect strict?))
-      (define nidx : Positive-Fixnum (+ idx 1))
-      (if (eq? more? #true)
-          (cond [(>= nidx n) (read-row (or (csv-discard-exceeded-fields /dev/csvin n nidx dialect strict?) eof) 0)]
-                [else (vector-set! row idx field) (read-row (read-char /dev/csvin) nidx)])
-          (cond [(= nidx n) (vector-set! row idx field) (values row more?)]
-                [(> nidx 1) (vector-set! row idx field) (csv-log-length-error /dev/csvin n nidx row strict?) (values #false more?)]
-                [(not (eq? field empty-field)) (csv-log-length-error /dev/csvin n nidx (vector field) strict?) (values #false more?)]
-                [(or trim-line? (not more?)) (values #false more?)]
-                [else (csv-log-length-error /dev/csvin n nidx (vector empty-field) strict?) (values #false more?)])))))
+                   [count : Index 0])
+      (define-values (field more?/ch?) (csv-read-field /dev/csvin maybe-char dialect strict?))
+      (define ncount : Positive-Fixnum (+ count 1))
+      (if (eq? more?/ch? #true)
+          (cond [(>= ncount n) (read-row (or (csv-discard-exceeded-fields /dev/csvin n ncount dialect strict?) eof) 0)]
+                [else (vector-set! row count field) (read-row (read-char /dev/csvin) ncount)])
+          (cond [(= ncount n) (vector-set! row count field) (values row more?/ch?)]
+                [(> ncount 1) (vector-set! row count field) (csv-log-length-error /dev/csvin n ncount row strict?) (values #false more?/ch?)]
+                [(not (eq? field empty-field)) (csv-log-length-error /dev/csvin n ncount (vector field) strict?) (values #false more?/ch?)]
+                [(or trim-line? (not more?/ch?)) (values #false more?/ch?)]
+                [else (csv-log-length-error /dev/csvin n ncount (vector empty-field) strict?) (values #false more?/ch?)])))))
 
 (define read-csv-row* : (-> Input-Port (U Char EOF) CSV-Dialect Boolean Boolean (Values (Listof CSV-Field) (Option Char)))
   (lambda [/dev/csvin leading-char dialect strict? trim-line?]
     (let read-row ([maybe-char : (U Char EOF) leading-char]
                    [sdleif : (Listof CSV-Field) null])
-      (define-values (field more?) (csv-read-field /dev/csvin maybe-char dialect strict?))
-      (cond [(eq? more? #true) (read-row (read-char /dev/csvin) (cons field sdleif))]
-            [(pair? sdleif) (values (reverse (cons field sdleif)) more?)]
-            [(not (eq? field empty-field)) (values (list field) more?)]
-            [(or trim-line? (not more?)) (values null more?)]
-            [else (values empty-row* more?)]))))
+      (define-values (field more?/ch?) (csv-read-field /dev/csvin maybe-char dialect strict?))
+      (cond [(eq? more?/ch? #true) (read-row (read-char /dev/csvin) (cons field sdleif))]
+            [(pair? sdleif) (values (reverse (cons field sdleif)) more?/ch?)]
+            [(not (eq? field empty-field)) (values (list field) more?/ch?)]
+            [(or trim-line? (not more?/ch?)) (values null more?/ch?)]
+            [else (values empty-row* more?/ch?)]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-read-field : (-> Input-Port (U Char EOF) CSV-Dialect Boolean (Values CSV-Field (U Char Boolean)))
