@@ -1,12 +1,10 @@
 #lang typed/racket/base
 
 (provide (all-defined-out))
-(provide (all-from-out "../../csv.rkt"))
-(provide (all-from-out "../../digitama/exchange/csv/readline.rkt"))
+(provide (all-from-out "../../../csv.rkt"))
 (provide (all-from-out racket/logging racket/path racket/file))
 
-(require "../../csv.rkt")
-(require "../../digitama/exchange/csv/readline.rkt")
+(require "../../../csv.rkt")
 
 (require racket/path)
 (require racket/file)

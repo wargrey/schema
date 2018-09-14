@@ -4,8 +4,8 @@
 
 (provide (all-defined-out))
 
-(require "dialect.rkt")
-(require "readline.rkt")
+(require "../dialect.rkt")
+(require "line.rkt")
 (require "misc.rkt")
 
 (require racket/unsafe/ops)

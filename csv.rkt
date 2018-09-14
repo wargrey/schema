@@ -3,11 +3,11 @@
 (provide (all-defined-out) CSV-Field CSV-Row CSV-Row*)
 (provide (all-from-out "digitama/exchange/csv/dialect.rkt"))
 
-(require "digitama/exchange/csv/reader.rkt")
-(require "digitama/exchange/csv/readline.rkt")
-(require "digitama/exchange/csv/string.rkt")
+(require "digitama/exchange/csv/reader/port.rkt")
+(require "digitama/exchange/csv/reader/line.rkt")
+(require "digitama/exchange/csv/reader/string.rkt")
+(require "digitama/exchange/csv/reader/misc.rkt")
 (require "digitama/exchange/csv/dialect.rkt")
-(require "digitama/exchange/csv/misc.rkt")
 
 ;;; Note
 ; For a 60MB CSV:
@@ -67,3 +67,8 @@
 (define csv-empty-line? : (-> (Listof CSV-Field) Boolean)
   (lambda [row]
     (eq? row empty-row)))
+
+(define csv-empty-line*? : (-> (Listof CSV-Field) Boolean)
+  (lambda [row]
+    (eq? row empty-row*)))
+

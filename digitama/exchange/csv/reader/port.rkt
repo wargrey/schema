@@ -4,7 +4,7 @@
 
 (provide (all-defined-out))
 
-(require "dialect.rkt")
+(require "../dialect.rkt")
 (require "misc.rkt")
 
 (require racket/unsafe/ops)

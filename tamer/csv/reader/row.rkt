@@ -1,9 +1,9 @@
 #lang typed/racket/base
 
-(require "../../digitama/exchange/csv/reader.rkt")
-(require "../../digitama/exchange/csv/readline.rkt")
-(require "../../digitama/exchange/csv/string.rkt")
-(require "../../digitama/exchange/csv/dialect.rkt")
+(require "../../../digitama/exchange/csv/reader/port.rkt")
+(require "../../../digitama/exchange/csv/reader/line.rkt")
+(require "../../../digitama/exchange/csv/reader/string.rkt")
+(require "../../../digitama/exchange/csv/dialect.rkt")
 
 (require racket/logging)
 
