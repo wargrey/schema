@@ -2,8 +2,6 @@
 
 (require "../csv.rkt")
 
-(require racket/file)
-
 (define StateDepartment.csv : Path (build-path (#%dir) "StateDepartment.csv"))
 
 (printf "str: ")
