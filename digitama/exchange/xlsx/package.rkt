@@ -4,7 +4,7 @@
 
 (require racket/port)
 
-(require xml/dom)
+(require xdom/digitama/document)
 
 (require typed/racket/unsafe)
 
