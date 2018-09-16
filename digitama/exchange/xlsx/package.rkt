@@ -4,6 +4,8 @@
 
 (require racket/port)
 
+(require xml/dom)
+
 (require typed/racket/unsafe)
 
 (unsafe-require/typed
@@ -19,7 +21,7 @@
              Void)])
 
 (define-type XLSX-StdIn (U String Path Bytes))
-(define-type XLSX-Package (HashTable Bytes (-> Input-Port)))
+(define-type XLSX-Package (HashTable Bytes (U XML-Document (-> Input-Port))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define xlsx-input-package : (-> XLSX-StdIn XLSX-Package)
@@ -32,12 +34,14 @@
 
     (unzip /dev/zipin
            (λ [[entry : Bytes] [dir? : Boolean] [/dev/xlsxin : Input-Port] [timestamp : (Option Natural) #false]] : Any
-             (when (not dir?)
-               (define xlsx::// : Symbol (string->symbol (format "xlsx:///~a" entry)))
+             ;;; There is no folder in Office Open XML Package
+             ;;; The input port must be read here, or `unzip` will keep waiting...
+             (with-handlers ([exn? (λ [[e : exn]] (port->bytes /dev/xlsxin))])
                (hash-set! package entry
-                          ;;; the port must be read here, or `unzip` will keep waiting...
-                          (procedure-rename (λ [] (open-input-bytes (port->bytes /dev/xlsxin) xlsx:://))
-                                            xlsx:://)))))
+                          (cond [(regexp-match? #px"[.][Xx][Mm][Ll]$" entry) (read-xml-document /dev/xlsxin)]
+                                [else (let ([xlsx::// (string->symbol (format "xlsx:///~a" entry))]
+                                            [raw (port->bytes /dev/xlsxin)])
+                                        (procedure-rename (λ [] (open-input-bytes raw xlsx:://)) xlsx:://))])))))
 
     (unless (eq? /dev/zipin /dev/stdin)
       (close-input-port /dev/zipin))
