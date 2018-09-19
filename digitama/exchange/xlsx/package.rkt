@@ -4,7 +4,7 @@
 
 (require racket/port)
 
-(require xdom/digitama/document)
+(require sgml/digitama/document)
 
 (require typed/racket/unsafe)
 
@@ -36,6 +36,7 @@
            (λ [[entry : Bytes] [dir? : Boolean] [/dev/xlsxin : Input-Port] [timestamp : (Option Natural) #false]] : Any
              ;;; There is no folder in Office Open XML Package
              ;;; The input port must be read here, or `unzip` will keep waiting...
+             (displayln entry)
              (with-handlers ([exn? (λ [[e : exn]] (port->bytes /dev/xlsxin))])
                (hash-set! package entry
                           (cond [(regexp-match? #px"[.][Xx][Mm][Ll]$" entry) (read-xml-document /dev/xlsxin)]

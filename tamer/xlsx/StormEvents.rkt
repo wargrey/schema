@@ -6,6 +6,6 @@
 
 (define StateDepartment.xlsx : Path (#%xlsx))
 
-(define StateDepartment.zip (read-xlsx-package StateDepartment.xlsx))
+(define StateDepartment.zip (time (read-xlsx-package StateDepartment.xlsx)))
 
 StateDepartment.zip
