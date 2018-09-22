@@ -5,21 +5,25 @@
 (provide (all-defined-out))
 
 (require "../dialect.rkt")
+(require "progress.rkt")
 (require "line.rkt")
 (require "misc.rkt")
 
 (require racket/unsafe/ops)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define in-csv-string : (-> String Positive-Index CSV-Dialect Boolean Boolean Boolean (Sequenceof CSV-Row))
-  (lambda [/dev/strin n dialect skip-header? strict? trim-line?]
+(define in-csv-string : (-> String Positive-Index CSV-Dialect Boolean Boolean Boolean (Option Symbol) (Sequenceof CSV-Row))
+  (lambda [/dev/strin n dialect skip-header? strict? trim-line? maybe-topic]
+    (define maybe-progress-handler : Maybe-CSV-Progress-Handler (default-csv-progress-handler))
+    (define topic : Symbol (or maybe-topic ((default-csv-progress-topic-resolver) /dev/strin)))
+    
     (define eos : Index (string-length /dev/strin))
     (define sentinel : (Pairof CSV-Row Index) (cons empty-row (csv-sos /dev/strin eos skip-header?)))
     (define (read-csv [hint : (Pairof CSV-Row Index)]) : (Pairof CSV-Row Index)
       (let read-from ([pos : Index (cdr hint)])
-        (define-values (maybe-row npos) (csv-split-row /dev/strin eos pos n dialect strict? trim-line?))
+        (define-values (maybe-row npos) (csv-split-row /dev/strin eos pos n dialect strict? trim-line? maybe-progress-handler topic))
         (cond [(< npos eos) (if (and maybe-row) (cons maybe-row npos) (read-from npos))]
-              [(not maybe-row) sentinel]
+              [(not maybe-row) (csv-report-position* eos maybe-progress-handler topic) sentinel]
               [else (cons maybe-row eos)])))
 
     ((inst make-do-sequence (Pairof CSV-Row Index) CSV-Row)
@@ -30,16 +34,19 @@
                    #false
                    #false)))))
 
-(define in-csv-string* : (-> String CSV-Dialect Boolean Boolean Boolean (Sequenceof CSV-Row*))
-  (lambda [/dev/strin dialect skip-header? strict? trim-line?]
+(define in-csv-string* : (-> String CSV-Dialect Boolean Boolean Boolean (Option Symbol) (Sequenceof CSV-Row*))
+  (lambda [/dev/strin dialect skip-header? strict? trim-line? maybe-topic]
+    (define maybe-progress-handler : Maybe-CSV-Progress-Handler (default-csv-progress-handler))
+    (define topic : Symbol (or maybe-topic ((default-csv-progress-topic-resolver) /dev/strin)))
+    
     (define eos : Index (string-length /dev/strin))
     (define sentinel : (Pairof CSV-Row* Index) (cons empty-row* (csv-sos /dev/strin eos skip-header?)))
     (define (read-csv [hint : (Pairof CSV-Row* Index)]) : (Pairof CSV-Row* Index)
       (let read-from ([pos : Index (cdr hint)])
-        (define-values (maybe-row npos) (csv-split-row* /dev/strin eos pos dialect strict? trim-line?))
+        (define-values (maybe-row npos) (csv-split-row* /dev/strin eos pos dialect strict? trim-line? maybe-progress-handler topic))
         (cond [(< npos eos) (if (pair? maybe-row) (cons maybe-row npos) (read-from npos))]
               [(pair? maybe-row) (cons maybe-row eos)]
-              [else sentinel])))
+              [else (csv-report-position* eos maybe-progress-handler topic) sentinel])))
 
     ((inst make-do-sequence (Pairof CSV-Row* Index) CSV-Row*)
      (λ [] (values unsafe-car
@@ -50,29 +57,39 @@
                    #false)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define csv-split/reverse : (-> String Positive-Index CSV-Dialect Boolean Boolean Boolean (Listof CSV-Row))
-  (lambda [/dev/strin n dialect skip-header? strict? trim-line?]
+(define csv-split/reverse : (-> String Positive-Index CSV-Dialect Boolean Boolean Boolean (Option Symbol) (Listof CSV-Row))
+  (lambda [/dev/strin n dialect skip-header? strict? trim-line? maybe-topic]
+    (define maybe-progress-handler : Maybe-CSV-Progress-Handler (default-csv-progress-handler))
+    (define topic : Symbol (or maybe-topic ((default-csv-progress-topic-resolver) /dev/strin)))
+    
     (define eos : Index (string-length /dev/strin))
     (let read-csv ([swor : (Listof CSV-Row) null]
                    [pos : Index (csv-sos /dev/strin eos skip-header?)])
-      (define-values (maybe-row npos) (csv-split-row /dev/strin eos pos n dialect strict? trim-line?))
+      (define-values (maybe-row npos) (csv-split-row /dev/strin eos pos n dialect strict? trim-line? maybe-progress-handler topic))
       (cond [(< npos eos) (read-csv (if (and maybe-row) (cons maybe-row swor) swor) npos)]
-            [(and maybe-row) (cons maybe-row swor)]
-            [else swor]))))
+            [(and maybe-row) (csv-report-position* eos maybe-progress-handler topic) (cons maybe-row swor)]
+            [else (csv-report-position* eos maybe-progress-handler topic) swor]))))
 
-(define csv-split*/reverse : (-> String CSV-Dialect Boolean Boolean Boolean (Listof CSV-Row*))
-  (lambda [/dev/strin dialect skip-header? strict? trim-line?]
-   (define eos : Index (string-length /dev/strin))
+(define csv-split*/reverse : (-> String CSV-Dialect Boolean Boolean Boolean (Option Symbol) (Listof CSV-Row*))
+  (lambda [/dev/strin dialect skip-header? strict? trim-line? maybe-topic]
+    (define maybe-progress-handler : Maybe-CSV-Progress-Handler (default-csv-progress-handler))
+    (define topic : Symbol (or maybe-topic ((default-csv-progress-topic-resolver) /dev/strin)))
+    
+    (define eos : Index (string-length /dev/strin))
     (let read-csv ([swor : (Listof CSV-Row*) null]
                    [pos : Index (csv-sos /dev/strin eos skip-header?)])
-      (define-values (maybe-row npos) (csv-split-row* /dev/strin eos pos dialect strict? trim-line?))
+      (define-values (maybe-row npos) (csv-split-row* /dev/strin eos pos dialect strict? trim-line? maybe-progress-handler topic))
       (cond [(< npos eos) (read-csv (if (pair? maybe-row) (cons maybe-row swor) swor) npos)]
-            [(pair? maybe-row) (cons maybe-row swor)]
-            [else swor]))))
+            [(pair? maybe-row) (csv-report-position* eos maybe-progress-handler topic) (cons maybe-row swor)]
+            [else (csv-report-position* eos maybe-progress-handler topic) swor]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define csv-split-row : (-> String Index Index Positive-Index CSV-Dialect Boolean Boolean (Values (Option CSV-Row) Nonnegative-Fixnum))
-  (lambda [/dev/strin eos pos n dialect strict? trim-line?]
+(define csv-split-row : (-> String Index Index Positive-Index CSV-Dialect Boolean Boolean
+                            Maybe-CSV-Progress-Handler Symbol
+                            (Values (Option CSV-Row) Nonnegative-Fixnum))
+  (lambda [/dev/strin eos pos n dialect strict? trim-line? maybe-progress-handler topic]
+    (csv-report-position* pos maybe-progress-handler topic)
+    
     (define row : CSV-Row (make-vector n empty-field))
     (let split-row ([pos : Nonnegative-Fixnum pos]
                     [count : Index 0])
@@ -87,8 +104,12 @@
                 [(or trim-line? (>= npos eos)) (values #false npos)]
                 [else (csv-log-length-error #false /dev/strin pos n ncount (vector empty-field) strict?) (values #false npos)])))))
   
-(define csv-split-row* : (-> String Index Index CSV-Dialect Boolean Boolean (Values (Listof CSV-Field) Nonnegative-Fixnum))
-  (lambda [/dev/strin eos pos dialect strict? trim-line?]
+(define csv-split-row* : (-> String Index Index CSV-Dialect Boolean Boolean
+                             Maybe-CSV-Progress-Handler Symbol
+                            (Values (Listof CSV-Field) Nonnegative-Fixnum))
+  (lambda [/dev/strin eos pos dialect strict? trim-line? maybe-progress-handler topic]
+    (csv-report-position* pos maybe-progress-handler topic)
+
     (let split-row ([pos : Nonnegative-Fixnum pos]
                     [sdleif : (Listof CSV-Field) null])
       (define-values (field npos more?) (csv-split-field /dev/strin eos pos dialect strict?))

@@ -13,11 +13,13 @@
   (with-logging-to-port (current-error-port)
     (λ [] (with-input-from-file StateDepartment.csv
             (λ [] (time (read-csv (current-input-port) 28 #true)))))
-    'debug))
+    'debug
+    'exn:csv))
 
 (printf "lst: ")
 (define lists : (Listof (Listof CSV-Field))
   (with-logging-to-port (current-error-port)
     (λ [] (with-input-from-file StateDepartment.csv
             (λ [] (time (read-csv* (current-input-port) #true)))))
-    'debug))
+    'debug
+    'exn:csv))

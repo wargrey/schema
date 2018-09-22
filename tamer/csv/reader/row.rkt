@@ -22,7 +22,7 @@
  (current-error-port)
  (λ [] (for ([row (in-list examples)])
          (define /dev/csvin : Input-Port (open-input-string row))
-         (define-values (fields maybe-char) (read-csv-row* /dev/csvin (read-char /dev/csvin) dialect #false #true))
+         (define-values (fields maybe-char) (read-csv-row* /dev/csvin (read-char /dev/csvin) dialect #false #true #false 'whatever))
          (printf "~s ==> ~s~n #:n ~a #:next? ~a~n~n"
                  row fields
                  (if (pair? fields) (length fields) 0)
@@ -38,7 +38,7 @@
          (define maybe-line : (U String EOF) (read-line /dev/csvin 'any))
          (when (string? maybe-line)
            (define end : Index (string-length maybe-line))
-           (define fields (csv-extract-row* /dev/csvin maybe-line end dialect #false #true))
+           (define fields (csv-extract-row* /dev/csvin maybe-line end dialect #false #true #false 'whatever))
            (printf "~s ==> ~s~n #:n ~a #:next-leader? ~a~n~n"
                    row fields (if (pair? fields) (length fields) 0) (read-char /dev/csvin)))))
  'debug)
@@ -49,7 +49,7 @@
  (current-error-port)
  (λ [] (for ([row (in-list examples)])
          (define end : Index (string-length row))
-         (define-values (fields npos) (csv-split-row* row end 0 dialect #false #true))
+         (define-values (fields npos) (csv-split-row* row end 0 dialect #false #true #false 'whatever))
          (printf "~s ==> ~s~n #:n ~a #:next-leader? ~a~n~n"
                  row fields (if (pair? fields) (length fields) 0)
                  (if (>= npos end) eof (string-ref row npos)))))

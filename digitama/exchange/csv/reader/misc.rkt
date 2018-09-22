@@ -50,14 +50,6 @@
           [(or (path? /dev/stdin) (regexp-match? #px"\\.csv$" /dev/stdin)) /dev/stdin]
           [else csv-string-name])))
 
-(define csv-input-source : (-> CSV-StdIn Boolean (U Input-Port String))
-  (lambda [/dev/stdin trace?]
-    (cond [(input-port? /dev/stdin) /dev/stdin]
-          [(path? /dev/stdin) (csv-input-port /dev/stdin trace?)]
-          [(regexp-match? #px"\\.csv$" /dev/stdin) (csv-input-port (string->path (format "~a" /dev/stdin)) trace?)]
-          [(bytes? /dev/stdin) (bytes->string/utf-8 /dev/stdin)]
-          [else /dev/stdin])))
-
 (define csv-input-port : (-> CSV-StdIn Boolean Input-Port)
   (lambda [/dev/stdin trace?]
     (define /dev/csvin : Input-Port
@@ -71,6 +63,14 @@
         (hash-set! csv-ports /dev/csvin #true)))
     
     /dev/csvin))
+
+(define csv-input-source : (-> CSV-StdIn Boolean (U Input-Port String))
+  (lambda [/dev/stdin trace?]
+    (cond [(input-port? /dev/stdin) /dev/stdin]
+          [(path? /dev/stdin) (csv-input-port /dev/stdin trace?)]
+          [(regexp-match? #px"\\.csv$" /dev/stdin) (csv-input-port (string->path (format "~a" /dev/stdin)) trace?)]
+          [(bytes? /dev/stdin) (bytes->string/utf-8 /dev/stdin)]
+          [else /dev/stdin])))
 
 (define csv-close-input-port : (-> Input-Port Void)
   (lambda [/dev/csvin]

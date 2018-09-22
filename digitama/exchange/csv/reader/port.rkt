@@ -5,6 +5,7 @@
 (provide (all-defined-out))
 
 (require "../dialect.rkt")
+(require "progress.rkt")
 (require "misc.rkt")
 
 (require racket/unsafe/ops)
@@ -19,14 +20,17 @@
 ;; 6. Unboxing the CSV-Dialect early is not helpful
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define in-csv-port : (-> Input-Port Positive-Index CSV-Dialect Boolean Boolean Boolean (Sequenceof (Vectorof CSV-Field)))
-  (lambda [/dev/csvin n dialect skip-header? strict? trim-line?]
+(define in-csv-port : (-> Input-Port Positive-Index CSV-Dialect Boolean Boolean Boolean (Option Symbol) (Sequenceof (Vectorof CSV-Field)))
+  (lambda [/dev/csvin n dialect skip-header? strict? trim-line? maybe-topic]
+    (define maybe-progress-handler : Maybe-CSV-Progress-Handler (default-csv-progress-handler))
+    (define topic : Symbol (or maybe-topic ((default-csv-progress-topic-resolver) /dev/csvin)))
+
     (define sentinel : (Pairof (U Char EOF) (Vectorof CSV-Field)) (cons eof empty-row))
     (define (read-csv [hint : (Pairof (U Char EOF) (Vectorof CSV-Field))]) : (Pairof (U Char EOF) (Vectorof CSV-Field))
       (let read-with ([maybe-char : (U Char EOF) (car hint)])
-        (define-values (maybe-row maybe-leader) (read-csv-row /dev/csvin n maybe-char dialect strict? trim-line?))
+        (define-values (maybe-row maybe-leader) (read-csv-row /dev/csvin n maybe-char dialect strict? trim-line? maybe-progress-handler topic))
         (cond [(and maybe-leader) (if (and maybe-row) (cons maybe-leader maybe-row) (read-with maybe-leader))]
-              [(not maybe-row) (csv-close-input-port /dev/csvin) sentinel]
+              [(not maybe-row) (csv-report-final-progress /dev/csvin maybe-progress-handler topic #true) sentinel]
               [else (cons eof maybe-row)])))
 
     (unless (not skip-header?) (read-line /dev/csvin))
@@ -38,14 +42,17 @@
                    #false
                    #false)))))
 
-(define in-csv-port* : (-> Input-Port CSV-Dialect Boolean Boolean Boolean (Sequenceof CSV-Row*))
-  (lambda [/dev/csvin dialect skip-header? strict? trim-line?]
+(define in-csv-port* : (-> Input-Port CSV-Dialect Boolean Boolean Boolean (Option Symbol) (Sequenceof CSV-Row*))
+  (lambda [/dev/csvin dialect skip-header? strict? trim-line? maybe-topic]
+    (define maybe-progress-handler : Maybe-CSV-Progress-Handler (default-csv-progress-handler))
+    (define topic : Symbol (or maybe-topic ((default-csv-progress-topic-resolver) /dev/csvin)))
+    
     (define sentinel : (Pairof (U Char EOF) CSV-Row*) (cons eof empty-row*))
     (define (read-csv [hint : (Pairof (U Char EOF) CSV-Row*)]) : (Pairof (U Char EOF) CSV-Row*)
       (let read-with ([leader : (U Char EOF) (car hint)])
-        (define-values (maybe-row maybe-leader) (read-csv-row* /dev/csvin leader dialect strict? trim-line?))
+        (define-values (maybe-row maybe-leader) (read-csv-row* /dev/csvin leader dialect strict? trim-line? maybe-progress-handler topic))
         (cond [(and maybe-leader) (if (pair? maybe-row) (cons maybe-leader maybe-row) (read-with maybe-leader))]
-              [(null? maybe-row) (csv-close-input-port /dev/csvin) sentinel]
+              [(null? maybe-row) (csv-report-final-progress /dev/csvin maybe-progress-handler topic #true) sentinel]
               [else (cons eof maybe-row)])))
 
     (unless (not skip-header?) (read-line /dev/csvin))
@@ -58,29 +65,41 @@
                    #false)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define csv-read/reverse : (-> Input-Port Positive-Index CSV-Dialect Boolean Boolean Boolean (Listof (Vectorof CSV-Field)))
-  (lambda [/dev/csvin n dialect skip-header? strict? trim-line?]
+(define csv-read/reverse : (-> Input-Port Positive-Index CSV-Dialect Boolean Boolean Boolean (Option Symbol) (Listof (Vectorof CSV-Field)))
+  (lambda [/dev/csvin n dialect skip-header? strict? trim-line? maybe-topic]
     (unless (not skip-header?) (read-line /dev/csvin))
+    
+    (define maybe-progress-handler : Maybe-CSV-Progress-Handler (default-csv-progress-handler))
+    (define topic : Symbol (or maybe-topic ((default-csv-progress-topic-resolver) /dev/csvin)))
+
     (let read-csv ([swor : (Listof (Vectorof CSV-Field)) null]
                    [maybe-char : (U Char EOF) (read-char /dev/csvin)])
-      (define-values (maybe-row maybe-leader) (read-csv-row /dev/csvin n maybe-char dialect strict? trim-line?))
+      (define-values (maybe-row maybe-leader) (read-csv-row /dev/csvin n maybe-char dialect strict? trim-line? maybe-progress-handler topic))
       (cond [(and maybe-leader) (read-csv (if (and maybe-row) (cons maybe-row swor) swor) maybe-leader)]
-            [(and maybe-row) (cons maybe-row swor)]
-            [else swor]))))
+            [(and maybe-row) (csv-report-final-progress /dev/csvin maybe-progress-handler topic #false) (cons maybe-row swor)]
+            [else (csv-report-final-progress /dev/csvin maybe-progress-handler topic #false) swor]))))
 
-(define csv-read*/reverse : (-> Input-Port CSV-Dialect Boolean Boolean Boolean (Listof CSV-Row*))
-  (lambda [/dev/csvin dialect skip-header? strict? trim-line?]
+(define csv-read*/reverse : (-> Input-Port CSV-Dialect Boolean Boolean Boolean (Option Symbol) (Listof CSV-Row*))
+  (lambda [/dev/csvin dialect skip-header? strict? trim-line? maybe-topic]
     (unless (not skip-header?) (read-line /dev/csvin))
+    
+    (define maybe-progress-handler : Maybe-CSV-Progress-Handler (default-csv-progress-handler))
+    (define topic : Symbol (or maybe-topic ((default-csv-progress-topic-resolver) /dev/csvin)))
+    
     (let read-csv ([swor : (Listof CSV-Row*) null]
                    [maybe-char : (U Char EOF) (read-char /dev/csvin)])
-      (define-values (maybe-row maybe-leader) (read-csv-row* /dev/csvin maybe-char dialect strict? trim-line?))
+      (define-values (maybe-row maybe-leader) (read-csv-row* /dev/csvin maybe-char dialect strict? trim-line? maybe-progress-handler topic))
       (cond [(and maybe-leader) (read-csv (if (pair? maybe-row) (cons maybe-row swor) swor) maybe-leader)]
-            [(pair? maybe-row) (cons maybe-row swor)]
-            [else swor]))))
+            [(pair? maybe-row) (csv-report-final-progress /dev/csvin maybe-progress-handler topic #false) (cons maybe-row swor)]
+            [else (csv-report-final-progress /dev/csvin maybe-progress-handler topic #false) swor]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define read-csv-row : (-> Input-Port Positive-Index (U Char EOF) CSV-Dialect Boolean Boolean (Values (Option (Vectorof CSV-Field)) (Option Char)))
-  (lambda [/dev/csvin n leading-char dialect strict? trim-line?]
+(define read-csv-row : (-> Input-Port Positive-Index (U Char EOF) CSV-Dialect Boolean Boolean
+                           Maybe-CSV-Progress-Handler Symbol
+                           (Values (Option (Vectorof CSV-Field)) (Option Char)))
+  (lambda [/dev/csvin n leading-char dialect strict? trim-line? maybe-progress-handler topic]
+    (csv-report-progress /dev/csvin maybe-progress-handler topic)
+    
     (define row : (Vectorof CSV-Field) (make-vector n empty-field))
     (let read-row ([maybe-char : (U Char EOF) leading-char]
                    [count : Index 0])
@@ -95,8 +114,12 @@
                 [(or trim-line? (not more?/ch?)) (values #false more?/ch?)]
                 [else (csv-log-length-error /dev/csvin n ncount (vector empty-field) strict?) (values #false more?/ch?)])))))
 
-(define read-csv-row* : (-> Input-Port (U Char EOF) CSV-Dialect Boolean Boolean (Values (Listof CSV-Field) (Option Char)))
-  (lambda [/dev/csvin leading-char dialect strict? trim-line?]
+(define read-csv-row* : (-> Input-Port (U Char EOF) CSV-Dialect Boolean Boolean
+                            Maybe-CSV-Progress-Handler Symbol
+                            (Values (Listof CSV-Field) (Option Char)))
+  (lambda [/dev/csvin leading-char dialect strict? trim-line? maybe-progress-handler topic]
+    (csv-report-progress /dev/csvin maybe-progress-handler topic)
+    
     (let read-row ([maybe-char : (U Char EOF) leading-char]
                    [sdleif : (Listof CSV-Field) null])
       (define-values (field more?/ch?) (csv-read-field /dev/csvin maybe-char dialect strict?))
