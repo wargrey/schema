@@ -69,7 +69,7 @@
     (cond [(input-port? /dev/stdin) /dev/stdin]
           [(path? /dev/stdin) (csv-input-port /dev/stdin trace?)]
           [(regexp-match? #px"\\.csv$" /dev/stdin) (csv-input-port (string->path (format "~a" /dev/stdin)) trace?)]
-          [(bytes? /dev/stdin) (bytes->string/utf-8 /dev/stdin)]
+          [(bytes? /dev/stdin) (parameterize ([port-count-lines-enabled #false]) (csv-input-port /dev/stdin trace?))]
           [else /dev/stdin])))
 
 (define csv-close-input-port : (-> Input-Port Void)
