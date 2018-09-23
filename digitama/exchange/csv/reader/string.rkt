@@ -188,7 +188,7 @@
     (let skip ([pos : Nonnegative-Fixnum pos]
                [valid? : Boolean #true])
       (cond [(>= pos eos) (values eos #false)]
-            [else (let ([ch (string-ref /dev/strin pos)])
+            [else (let ([ch : Char (string-ref /dev/strin pos)])
                     (cond [(eq? ch <:>) (csv-log-if-invalid #false /dev/strin pos valid? strict?) (values (+ pos 1) #true)]
                           [(csv-detect-newline* ch /dev/strin eos pos <#>)
                            => (csv-linefeed-identity (csv-log-if-invalid #false /dev/strin pos valid? strict?))]
