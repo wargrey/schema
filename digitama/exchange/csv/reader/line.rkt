@@ -129,15 +129,15 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-extract-field : (-> Input-Port String Index Index CSV-Dialect Boolean (Values String Index String Nonnegative-Fixnum))
   (lambda [/dev/csvin src eol idx dialect strict?]
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
-    (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
+    (define <#> : (Option Char) (csv-dialect-comment-char dialect))
+    (define <:> : Char (csv-dialect-delimiter dialect))
+    (define </> : (Option Char) (csv-dialect-quote-char dialect))
+    (define <\> : (Option Char) (csv-dialect-escape-char dialect))
     
     (let extract-field ([src : String src]
                         [eol : Index eol]
                         [start : Nonnegative-Fixnum idx]
-                        [trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect)]
+                        [trim-left? : Boolean (csv-dialect-skip-leading-space? dialect)]
                         [end : Nonnegative-Fixnum idx]
                         [pos : Nonnegative-Fixnum idx]
                         [escaping? : Boolean #false]
@@ -157,7 +157,7 @@
                                  (cond [(string? maybe-src) (extract-field maybe-src (string-length maybe-src) 0 #false 0 0 #false half-field)]
                                        [else (csv-log-eof-error /dev/csvin src next strict?) (values src eol half-field (+ eol 1))])))]
                           [(char-blank? ch) (extract-field src eol (if trim-left? next start) trim-left?
-                                                           (if (CSV-Dialect-skip-trailing-space? dialect) end next)
+                                                           (if (csv-dialect-skip-trailing-space? dialect) end next)
                                                            next escaping? previous)]
                           [else (extract-field src eol start #false next next escaping? previous)]))]))))
 
@@ -197,8 +197,8 @@
 
 (define csv-omit-quoted-rest : (-> Input-Port String Index Nonnegative-Fixnum CSV-Dialect Boolean Nonnegative-Fixnum)
   (lambda [/dev/csvin src eol idx dialect strict?]
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
+    (define <:> : Char (csv-dialect-delimiter dialect))
+    (define <#> : (Option Char) (csv-dialect-comment-char dialect))
     
     (let skip ([end : Nonnegative-Fixnum idx]
                [valid? : Boolean #true])

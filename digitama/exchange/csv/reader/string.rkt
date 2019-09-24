@@ -122,13 +122,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-split-field : (-> String Index Nonnegative-Fixnum CSV-Dialect Boolean (Values String Nonnegative-Fixnum Boolean))
   (lambda [/dev/strin eos pos dialect strict?]
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
-    (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
+    (define <#> : (Option Char) (csv-dialect-comment-char dialect))
+    (define <:> : Char (csv-dialect-delimiter dialect))
+    (define </> : (Option Char) (csv-dialect-quote-char dialect))
+    (define <\> : (Option Char) (csv-dialect-escape-char dialect))
     
     (let extract-field ([start : Nonnegative-Fixnum pos]
-                        [trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect)]
+                        [trim-left? : Boolean (csv-dialect-skip-leading-space? dialect)]
                         [end : Nonnegative-Fixnum pos]
                         [pos : Nonnegative-Fixnum pos]
                         [escaping? : Boolean #false])
@@ -146,7 +146,7 @@
                            [else (csv-log-eof-error #false /dev/strin eos strict?)
                                  (extract-field start #false end escaped-next escaping?)]))]
                   [(char-blank? ch) (extract-field (if trim-left? next start) trim-left?
-                                                   (if (CSV-Dialect-skip-trailing-space? dialect) end next)
+                                                   (if (csv-dialect-skip-trailing-space? dialect) end next)
                                                    next escaping?)]
                   [else (extract-field start #false next next escaping?)]))))))
 
@@ -182,8 +182,8 @@
 
 (define csv-skip-quoted-rest : (-> String Index Nonnegative-Fixnum CSV-Dialect Boolean (Values Nonnegative-Fixnum Boolean))
   (lambda [/dev/strin eos pos dialect strict?]
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
+    (define <:> : Char (csv-dialect-delimiter dialect))
+    (define <#> : (Option Char) (csv-dialect-comment-char dialect))
     
     (let skip ([pos : Nonnegative-Fixnum pos]
                [valid? : Boolean #true])

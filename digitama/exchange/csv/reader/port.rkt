@@ -12,7 +12,7 @@
 
 ;;; Performance hints
 ;; 0. Comparing with `eq?` is significantly faster than with `eqv?`
-;; 1. Disable port lines counting improves the second most
+;; 1. Disabling port lines counting improves the second most
 ;; 2. Passing a procedure to the reader is more difficult to be optimized than passing boolean to achieve the same effects
 ;; 3. Avoiding `peek-char`s
 ;; 4. Single line comment is an empty line
@@ -132,14 +132,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define csv-read-field : (-> Input-Port (U Char EOF) CSV-Dialect Boolean (Values CSV-Field (U Char Boolean)))
   (lambda [/dev/csvin leading-char dialect strict?]
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
-    (define </> : (Option Char) (CSV-Dialect-quote-char dialect))
-    (define <\> : (Option Char) (CSV-Dialect-escape-char dialect))
-    (define trim-right? : Boolean (CSV-Dialect-skip-trailing-space? dialect))
+    (define <:> : Char (csv-dialect-delimiter dialect))
+    (define <#> : (Option Char) (csv-dialect-comment-char dialect))
+    (define </> : (Option Char) (csv-dialect-quote-char dialect))
+    (define <\> : (Option Char) (csv-dialect-escape-char dialect))
+    (define trim-right? : Boolean (csv-dialect-skip-trailing-space? dialect))
 
     (let read-field ([srahc : (Listof Char) null]
-                     [trim-left? : Boolean (CSV-Dialect-skip-leading-space? dialect)]
+                     [trim-left? : Boolean (csv-dialect-skip-leading-space? dialect)]
                      [maybe-char : (U Char EOF) leading-char])
       (cond [(eq? maybe-char <:>) (values (srahc->field/trim-right srahc trim-right?) #true)]
             [(eq? maybe-char </>) (csv-read-quoted-field /dev/csvin srahc </> <\> dialect strict?)]
@@ -182,8 +182,8 @@
     ;; NOTE
     ; No matter the leading and trailing whitespaces should be skipped or not,
     ; we tolerate the whitespaces around the quoted field but do not count them as part of the field.
-    (define <:> : Char (CSV-Dialect-delimiter dialect))
-    (define <#> : (Option Char) (CSV-Dialect-comment-char dialect))
+    (define <:> : Char (csv-dialect-delimiter dialect))
+    (define <#> : (Option Char) (csv-dialect-comment-char dialect))
 
     (let discard ([maybe-char : (U Char EOF) leading-char]
                   [valid? : Boolean #true])
