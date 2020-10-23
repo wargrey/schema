@@ -11,7 +11,7 @@
 (require racket/unsafe/ops)
 
 ;;; Performance hints
-;; 0. Comparing with `eq?` is significantly faster than with `eqv?`
+;; 0. Doing equality checking with `eq?` is significantly faster than with `eqv?`
 ;; 1. Disabling port lines counting improves the second most
 ;; 2. Passing a procedure to the reader is more difficult to be optimized than passing boolean to achieve the same effects
 ;; 3. Avoiding `peek-char`s

@@ -13,9 +13,9 @@
 
 ;;; Note
 ; For a 70MB CSV:
-; 1. The performance of `read-csv` and `sequence->list . in-csv` can be considered identical (e.g. the difference is within [-200ms, +200ms])
+; 1. The performance of `read-csv` and `sequence->list . in-csv` can be considered identical (e.g. the oscillation is less than 200ms)
 ; 2. In contrast to `csv-readline`, reading all chars before parsing is a little slower, anti-intuition!
-; 3. Deal with bytes directly does not performance well, it is slower than dealing with string.
+; 3. Deal with bytes directly does not perform well, it is slower than dealing with string.
 
 (define read-csv : (-> CSV-StdIn Positive-Integer Boolean [#:dialect (Option CSV-Dialect)]
                        [#:strict? Boolean] [#:skip-empty-line? Boolean] [#:progress-topic (Option Symbol)]
