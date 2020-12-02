@@ -76,7 +76,8 @@
                     [table-rowid-body (if (syntax-e #'view?)
                                           #'(throw exn:fail:unsupported '#%table "temporary view has no primary keys")
                                           #'(vector (racket->sql-pk (table-rowid self)) ...))])
-       #'(begin (define-type Table table)
+       (syntax/loc stx
+         (begin (define-type Table table)
                 (define-type #%Table RowidType)
                 (define-type Table-List (List FieldType ...))
                 (define-type Table-Field (U 'field ...))
@@ -265,10 +266,11 @@
                   (lambda [[fname #false]]
                     (case fname
                       [(field) (check-example field-examples (λ [] (list defval ...)))] ...
-                      [else (map table-examples '(field ...))])))))]))
+                      [else (map table-examples '(field ...))]))))))]))
 
 (define-syntax (define-schema stx)
   (syntax-parse stx
     [(_ Table-Datum (define-table id #:as ID rest ...) ...)
-     #'(begin (define-type Table-Datum (U ID ...))
-              (define-table id #:as ID rest ...) ...)]))
+     (syntax/loc stx
+       (begin (define-type Table-Datum (U ID ...))
+              (define-table id #:as ID rest ...) ...))]))

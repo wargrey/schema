@@ -15,16 +15,18 @@
 (require (for-syntax racket/base))
 
 (define-syntax (#%csv stx)
-  #'(let ([rmp (variable-reference->resolved-module-path (#%variable-reference))])
+  (syntax/loc stx
+    (let ([rmp (variable-reference->resolved-module-path (#%variable-reference))])
       (cond [(not rmp) (current-directory)]
             [else (let ([full (resolved-module-path-name rmp)])
-                    (if (path? full) (path-replace-extension full #".csv") (current-directory)))])))
+                    (if (path? full) (path-replace-extension full #".csv") (current-directory)))]))))
 
 (define-syntax (#%dir stx)
-  #'(let ([rmp (variable-reference->resolved-module-path (#%variable-reference))])
+  (syntax/loc stx
+    (let ([rmp (variable-reference->resolved-module-path (#%variable-reference))])
       (cond [(not rmp) (current-directory)]
             [else (let ([full (resolved-module-path-name rmp)])
-                    (if (path? full) (assert (path-only full) path?) (current-directory)))])))
+                    (if (path? full) (assert (path-only full) path?) (current-directory)))]))))
 
 
 (define-type Unit (U 'KB 'MB 'GB 'TB))

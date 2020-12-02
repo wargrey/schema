@@ -19,9 +19,10 @@
   (syntax-case stx [:]
     [(_ id : ID rest ...)
      (with-syntax ([ID? (format-id #'id "~a?" (syntax-e #'ID))])
-       #'(begin (define-type ID id)
+       (syntax/loc stx
+         (begin (define-type ID id)
                 (struct id rest ... #:transparent)
-                (define-predicate ID? id)))]))
+                (define-predicate ID? id))))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define rest->message : (-> (U String (Pairof String (Listof Any))) String)

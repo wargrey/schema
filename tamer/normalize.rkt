@@ -6,7 +6,7 @@
   (syntax-case stx []
     [(_ name ...)
      (with-syntax ([(dbname ...) (for/list ([n (in-list (syntax->list #'(name ...)))]) (name->sql (syntax-e n)))])
-       #'(begin (displayln dbname) ...))]))
+       (syntax/loc stx (begin (displayln dbname) ...)))]))
 
 (normalize
  sqlite-master
