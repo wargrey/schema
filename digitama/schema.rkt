@@ -18,9 +18,11 @@
 
 (require (for-syntax racket/base))
 (require (for-syntax syntax/parse))
+(require (for-syntax racket/symbol))
 (require (for-syntax racket/syntax))
 (require (for-syntax racket/sequence))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-type Schema schema)
 (struct schema () #:transparent)
 
@@ -54,11 +56,11 @@
                      (let ([TableName (syntax-e #'Table)]
                            [tablename (syntax-e #'table)])
                        (list (for/list ([fmt (in-list (list '#%~a '~a-List '~a-Field))])
-                               (format-id #'Table (symbol->string fmt) TableName))
+                               (format-id #'Table (symbol->immutable-string fmt) TableName))
                              (for/list ([fmt (in-list (list 'unsafe-~a 'make-~a 'remake-~a '~a? '~a-list? '#%~a 'in-~a
                                                             '~a->hash 'hash->~a '~a->list 'list->~a '~a->row 'row->~a
                                                             'make-~a-message 'make-~a->message))])
-                               (format-id #'table (symbol->string fmt) tablename))
+                               (format-id #'table (symbol->immutable-string fmt) tablename))
                              (for/list ([suffix (in-list (list 'create 'insert 'delete 'update 'select 'seek))])
                                (format-id #'table "~a:~a" tablename suffix))
                              (for/list ([suffix (in-list (list 'serialize 'deserialize 'examples))])

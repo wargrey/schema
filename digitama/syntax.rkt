@@ -9,6 +9,7 @@
 (require (for-syntax racket/list))
 (require (for-syntax syntax/parse))
 (require (for-syntax racket/syntax))
+(require (for-syntax racket/symbol))
 
 (require (for-syntax "normalize.rkt"))
 
@@ -30,7 +31,7 @@
        (define table-field (format-id #'field "~a-~a" tablename (syntax-e #'field)))
        (define ?table-field (format-id #'field "?~a-~a" tablename (syntax-e #'field)))
        (values (and primary? table-field)
-               (list (datum->syntax #'field (string->keyword (symbol->string (syntax-e #'field))))
+               (list (datum->syntax #'field (string->keyword (symbol->immutable-string (syntax-e #'field))))
                      table-field ?table-field
                      (if (or primary? (attribute not-null)) DataType #`(Option #,DataType))
                      (or (attribute contract) #'#true)
