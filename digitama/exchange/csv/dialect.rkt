@@ -15,7 +15,7 @@
 
 (define make-csv-dialect : (-> [#:delimiter Char] [#:quote-char (Option Char)] [#:escape-char (Option Char)] [#:comment-char (Option Char)]
                                [#:skip-leading-space? Boolean] [#:skip-trailing-space? Boolean]
-                               csv-dialect)
+                               CSV-Dialect)
   (let ([<eq?>-char? : (-> (Option Char) Boolean) (λ [ch] (or (not ch) (char<? ch #\Ā)))])
     (lambda [#:delimiter [<:> #\,] #:quote-char [</> #\"] #:escape-char [<\> #false] #:comment-char [<#> #false]
              #:skip-leading-space? [trim-left? #false] #:skip-trailing-space? [trim-right? #false]]
@@ -26,5 +26,5 @@
       
       (unsafe-csv-dialect <:> </> (if (eq? </> <\>) #false <\>) <#> trim-left? trim-right?))))
 
-(define csv::rfc : csv-dialect (make-csv-dialect))
-(define csv::unix : csv-dialect (make-csv-dialect #:delimiter #\: #:quote-char #false #:comment-char #\# #:escape-char #\\))
+(define csv::rfc : CSV-Dialect (make-csv-dialect))
+(define csv::unix : CSV-Dialect (make-csv-dialect #:delimiter #\: #:quote-char #false #:comment-char #\# #:escape-char #\\))
