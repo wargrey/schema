@@ -3,6 +3,8 @@
 (provide (all-defined-out))
 
 (require racket/string)
+(require racket/list)
+
 (require typed/db/base)
 
 (require "misc.rkt")
@@ -12,7 +14,8 @@
 
 (define $? : (-> Symbol Integer String)
   (lambda [dbn idx]
-    (cond [(memq dbn '(sqlite3 postgresql)) (string-append "$" (number->string idx))]
+    (cond [(eq? dbn 'postgresql) (string-append "$" (number->string idx))]
+          [(eq? dbn 'sqlite3) (string-append "?" (number->string idx))]
           [else "?"])))
 
 (define string-join-map : (-> (Listof String) String String)
@@ -21,12 +24,12 @@
             (string-join cols (string-append "), " func "(")))))
 
 (define string-join=$i : (->* (Symbol (Listof String) String) (Index) String)
-  (lambda [dbn cols seq [i0 0]]
+  (lambda [dbn cols sep [i0 0]]
     (string-join (for/list : (Listof String)
                    ([pk (in-list cols)]
                     [idx (in-naturals (add1 i0))])
                    (string-append pk " = " ($? dbn idx)))
-                 seq)))
+                 sep)))
 
 (define order-limit : (-> (Option Symbol) Boolean Natural Natural String)
   (lambda [order-by asc? limit offset]
@@ -80,12 +83,13 @@
 
 (define update.sql : (-> String (Listof+ String) (Listof String) Virtual-Statement)
   (lambda [table rowid cols]
+    (define rowid-size : Index (length rowid))
     (virtual-statement
      (λ [[dbms : DBSystem]]
        (case (dbsystem-name dbms)
          [(sqlite3)
           (format "UPDATE ~a SET ~a WHERE ~a;" table
-                  (string-join=$i 'sqlite3 cols ", " (length rowid))
+                  (string-join=$i 'sqlite3 (drop cols rowid-size) ", " rowid-size)
                   (string-join=$i 'sqlite3 rowid " AND " 0))]
          [else (throw exn:fail:unsupported 'update.sql "unknown database system: ~a" (dbsystem-name dbms))])))))
 
@@ -106,7 +110,7 @@
        (define dbn : Symbol (dbsystem-name dbms))
        (format "SELECT ~a FROM ~a WHERE ~a~a;"
          (string-join cols ", ") table
-         (apply format where (build-list argn (λ [[idx : Index]] ($? dbn idx))))
+         (apply format where (build-list argn (λ [[idx : Index]] ($? dbn (add1 idx)))))
          (order-limit by asc? limit offset))))))
 
 (define delete-from.sql : (-> String (Listof String) Virtual-Statement)

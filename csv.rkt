@@ -17,7 +17,7 @@
 ; 2. In contrast to `csv-readline`, reading all chars before parsing is a little slower, anti-intuition!
 ; 3. Deal with bytes directly does not perform well, it is slower than dealing with string.
 
-(define read-csv : (-> CSV-StdIn Positive-Integer Boolean [#:dialect (Option CSV-Dialect)]
+(define read-csv : (-> CSV-Stdin Positive-Integer Boolean [#:dialect (Option CSV-Dialect)]
                        [#:strict? Boolean] [#:skip-empty-line? Boolean] [#:progress-topic (Option Symbol)]
                        (Listof (Vectorof CSV-Field)))
   (lambda [/dev/stdin col skip-header? #:dialect [maybe-dialect #false]
@@ -34,7 +34,7 @@
                               [else (csv-readline/reverse /dev/csvin n dialect skip-header? strict? trim-line? maybe-topic)]))))
        (λ [] (custodian-shutdown-all (current-custodian)))))))
 
-(define read-csv* : (-> CSV-StdIn Boolean [#:dialect (Option CSV-Dialect)]
+(define read-csv* : (-> CSV-Stdin Boolean [#:dialect (Option CSV-Dialect)]
                         [#:strict? Boolean] [#:skip-empty-line? Boolean] [#:progress-topic (Option Symbol)]
                         (Listof (Pairof CSV-Field (Listof CSV-Field))))
   (lambda [/dev/stdin skip-header? #:dialect [maybe-dialect #false]
@@ -50,7 +50,7 @@
                               [else (csv-readline*/reverse /dev/csvin dialect skip-header? strict? trim-line? maybe-topic)]))))
        (λ [] (custodian-shutdown-all (current-custodian)))))))
 
-(define in-csv : (-> CSV-StdIn Positive-Integer Boolean [#:dialect (Option CSV-Dialect)]
+(define in-csv : (-> CSV-Stdin Positive-Integer Boolean [#:dialect (Option CSV-Dialect)]
                      [#:strict? Boolean] [#:skip-empty-line? Boolean] [#:progress-topic (Option Symbol)]
                      (Sequenceof (Vectorof CSV-Field)))
   (lambda [/dev/stdin col skip-header? #:dialect [maybe-dialect #false]
@@ -63,7 +63,7 @@
           [(port-counts-lines? /dev/csvin) (in-csv-port /dev/csvin n dialect skip-header? strict? trim-line? maybe-topic)]
           [else (in-csv-line-port /dev/csvin n dialect skip-header? strict? trim-line? maybe-topic)])))
 
-(define in-csv* : (-> CSV-StdIn Boolean [#:dialect (Option CSV-Dialect)]
+(define in-csv* : (-> CSV-Stdin Boolean [#:dialect (Option CSV-Dialect)]
                       [#:strict? Boolean] [#:skip-empty-line? Boolean] [#:progress-topic (Option Symbol)]
                       (Sequenceof (Pairof CSV-Field (Listof CSV-Field))))
   (lambda [/dev/stdin skip-header? #:dialect [maybe-dialect #false]

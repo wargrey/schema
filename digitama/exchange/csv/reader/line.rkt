@@ -220,7 +220,7 @@
             [else (csv-log-length-error /dev/csvin self this-eol n (unsafe-fx+ total 1) (reverse (cons field extras)) strict?) #false]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define csv-subfield : (-> CSV-StdIn* (Option String) String Nonnegative-Fixnum Nonnegative-Fixnum Boolean (Option Char) (Option Char) CSV-Field)
+(define csv-subfield : (-> CSV-Stdin* (Option String) String Nonnegative-Fixnum Nonnegative-Fixnum Boolean (Option Char) (Option Char) CSV-Field)
   (lambda [/dev/csvin previous src start end escaping? </> <\>]
     (define this-field : String
       (cond [(<= end start) empty-field]
@@ -228,7 +228,7 @@
             [else (csv-escfield /dev/csvin src start end </> <\>)]))
     (if (string? previous) (string-append previous string-newline this-field) this-field)))
 
-(define csv-escfield : (-> CSV-StdIn* String Nonnegative-Fixnum Nonnegative-Fixnum (Option Char) (Option Char) CSV-Field)
+(define csv-escfield : (-> CSV-Stdin* String Nonnegative-Fixnum Nonnegative-Fixnum (Option Char) (Option Char) CSV-Field)
   (lambda [/dev/csvin src start end </> <\>]
     ;;; NOTE: it cannot produce empty field
     (define dest : String (make-string (- end start)))
@@ -246,7 +246,7 @@
                              (string-set! dest idx #\newline) (escape (unsafe-fx+ ncur span) (unsafe-fx+ idx 1)))]
                           [else (string-set! dest idx ch) (escape ncur (unsafe-fx+ idx 1))]))]))))
 
-(define csv-extract-escaped-char : (-> CSV-StdIn* String Nonnegative-Fixnum Nonnegative-Fixnum (Values Char Nonnegative-Fixnum))
+(define csv-extract-escaped-char : (-> CSV-Stdin* String Nonnegative-Fixnum Nonnegative-Fixnum (Values Char Nonnegative-Fixnum))
   ;; https://en.wikipedia.org/wiki/Escape_sequences_in_C#Table_of_escape_sequences
   (lambda [/dev/csvin src end cur]
     (define ch : Char (string-ref src cur))
@@ -280,7 +280,7 @@
                     (cond [(char-oct-digit? ch) (read-octal (unsafe-fx+ (unsafe-fxlshift n 3) (char->decimal ch)) (+ count 1))]
                           [else (values (unicode->char n) count)]))]))))
 
-(define csv-extract-hexadecimal-char : (-> CSV-StdIn* String Nonnegative-Fixnum Nonnegative-Fixnum (Values Char Nonnegative-Fixnum))
+(define csv-extract-hexadecimal-char : (-> CSV-Stdin* String Nonnegative-Fixnum Nonnegative-Fixnum (Values Char Nonnegative-Fixnum))
   (lambda [/dev/csvin src end cur]
     (let read-hexa ([n : Fixnum 0]
                     [count : Nonnegative-Fixnum 0])
@@ -292,7 +292,7 @@
           (cond [(= count 0) (csv-log-escape-error /dev/csvin src idx) (values #\uFFFD 1)]
                 [else (values (unicode->char n) (unsafe-fx+ count 1))])))))
 
-(define csv-extract-unicode-char : (-> CSV-StdIn* String Nonnegative-Fixnum Nonnegative-Fixnum Positive-Byte
+(define csv-extract-unicode-char : (-> CSV-Stdin* String Nonnegative-Fixnum Nonnegative-Fixnum Positive-Byte
                                        (Values Char Nonnegative-Fixnum))
   (lambda [/dev/csvin src end cur total]
     (let read-unicode ([n : Fixnum 0]

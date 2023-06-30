@@ -73,7 +73,7 @@
         (schema-throw [exn:schema 'norow `((struct . ,table) (record . ,(list->vector rowid)))]
                       func "no such record found in the table"))
       (define metrics : (Listof SQL-Datum) (for/list ([ref (in-list refs)]) (racket->sql (ref record) dbname)))
-      (apply query dbc up.sql (append metrics rowid)))))
+      (apply query dbc up.sql metrics))))
 
 (define do-table-aggregate : (-> String Symbol (Option Symbol) Boolean Connection SQL-Datum)
   (lambda [dbtable function column distinct? dbc]

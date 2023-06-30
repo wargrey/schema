@@ -7,8 +7,8 @@
 (define-type CSV-Field String)
 (define-type CSV-Row (Vectorof CSV-Field))
 (define-type CSV-Row* (Pairof CSV-Field (Listof CSV-Field)))
-(define-type CSV-StdIn (U Input-Port Bytes Path-String))
-(define-type CSV-StdIn* (Option CSV-StdIn))
+(define-type CSV-Stdin (U Input-Port Bytes Path-String))
+(define-type CSV-Stdin* (Option CSV-Stdin))
 
 (define empty-field : CSV-Field "")
 (define empty-row : CSV-Row (vector))
@@ -44,13 +44,13 @@
 (define csv-string-name : Symbol '/dev/csvin/string)
 (define csv-ports : (HashTable Input-Port Boolean) (make-hasheq))
 
-(define csv-input-name : (-> CSV-StdIn Any)
+(define csv-input-name : (-> CSV-Stdin Any)
   (lambda [/dev/stdin]
     (cond [(input-port? /dev/stdin) (object-name /dev/stdin)]
           [(or (path? /dev/stdin) (regexp-match? #px"\\.csv$" /dev/stdin)) /dev/stdin]
           [else csv-string-name])))
 
-(define csv-input-port : (-> CSV-StdIn Boolean Input-Port)
+(define csv-input-port : (-> CSV-Stdin Boolean Input-Port)
   (lambda [/dev/stdin trace?]
     (define /dev/csvin : Input-Port
       (cond [(input-port? /dev/stdin) /dev/stdin]
@@ -64,7 +64,7 @@
     
     /dev/csvin))
 
-(define csv-input-source : (-> CSV-StdIn Boolean (U Input-Port String))
+(define csv-input-source : (-> CSV-Stdin Boolean (U Input-Port String))
   (lambda [/dev/stdin trace?]
     (cond [(input-port? /dev/stdin) /dev/stdin]
           [(path? /dev/stdin) (csv-input-port /dev/stdin trace?)]
@@ -79,7 +79,7 @@
       (close-input-port /dev/csvin))))
 
 (define csv-log-escape-error : (case-> [Input-Port -> Void]
-                                       [CSV-StdIn* String Nonnegative-Fixnum -> Void])
+                                       [CSV-Stdin* String Nonnegative-Fixnum -> Void])
   (let ([brief : String "invalid escape sequence"])
     (case-lambda
       [(/dev/csvin)
@@ -88,7 +88,7 @@
        (csv-log-syntax-error /dev/stdin src idx 1 'warning #false brief)])))
 
 (define csv-log-length-error : (case-> [Input-Port Integer Integer (U CSV-Row (Listof CSV-Field)) Boolean -> Void]
-                                       [CSV-StdIn* String Nonnegative-Fixnum Integer Integer (U CSV-Row (Listof CSV-Field)) Boolean -> Void])
+                                       [CSV-Stdin* String Nonnegative-Fixnum Integer Integer (U CSV-Row (Listof CSV-Field)) Boolean -> Void])
   (let ([brief (λ [[expected : Integer] [given : Integer] [in : (U CSV-Row (Listof CSV-Field))]] : String
                  (format "field length mismatch: expected ~a, given ~a ~a ~s"
                    expected given (if (< given expected) 'in 'with)
@@ -100,7 +100,7 @@
      (csv-log-syntax-error /dev/stdin src idx 1 'error strict? (brief expected given in))])))
 
 (define csv-log-eof-error : (case-> [Input-Port Boolean -> Void]
-                                    [CSV-StdIn* String Nonnegative-Fixnum Boolean -> Void])
+                                    [CSV-Stdin* String Nonnegative-Fixnum Boolean -> Void])
   (let ([brief : String "unexpected eof of file"])
     (case-lambda
       [(/dev/csvin strict?)
@@ -109,7 +109,7 @@
        (csv-log-syntax-error /dev/stdin src idx 0 'warning strict? brief)])))
 
 (define csv-log-out-quotes-error : (case-> [Input-Port Boolean Symbol -> Void]
-                                           [CSV-StdIn* String Nonnegative-Fixnum Boolean Symbol -> Void])
+                                           [CSV-Stdin* String Nonnegative-Fixnum Boolean Symbol -> Void])
   (let ([brief (λ [[position : Symbol]] : String (format "ignored non-whitespace chars ~a quote char" position))])
     (case-lambda
       [(/dev/csvin strict? position)
@@ -118,7 +118,7 @@
        (csv-log-syntax-error /dev/stdin src idx 0 'warning strict? (brief position))])))
 
 (define csv-log-if-invalid : (case-> [Input-Port Boolean Boolean -> Void]
-                                     [CSV-StdIn* String Nonnegative-Fixnum Boolean Boolean -> Void])
+                                     [CSV-Stdin* String Nonnegative-Fixnum Boolean Boolean -> Void])
   (case-lambda
     [(/dev/csvin valid? strict?)
      (when (not valid?) (csv-log-out-quotes-error /dev/csvin strict? 'after))]
@@ -126,7 +126,7 @@
      (when (not valid?) (csv-log-out-quotes-error /dev/stdin src (+ (assert idx index?) 1) strict? 'after))]))
 
 (define csv-log-syntax-error : (case-> [Input-Port Log-Level Boolean String -> Void]
-                                       [CSV-StdIn* String Nonnegative-Fixnum Byte Log-Level Boolean String -> Void])
+                                       [CSV-Stdin* String Nonnegative-Fixnum Byte Log-Level Boolean String -> Void])
   (case-lambda
     [(/dev/csvin level strict? brief)
      (define-values (line column position) (port-next-location /dev/csvin))

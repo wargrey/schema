@@ -16,6 +16,7 @@
 (require/typed db/private/sqlite3/ffi
                [sqlite3_libversion_number (-> Integer)])
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-type Pragma-Datum (U Real Boolean Symbol String))
 
 (sqlite3-support-without-rowid? (>= (sqlite3_libversion_number) 3008002))
@@ -28,6 +29,7 @@
      [rootpage : Natural       #:not-null]
      [sql      : String])))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define sqlite3-create-database-if-not-exists : (->* (Path-String) () Void)
   (lambda [db]
     ; TODO: make the db as a application file format
